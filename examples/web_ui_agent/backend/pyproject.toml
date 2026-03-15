@@ -1,38 +1,24 @@
 [project]
-name = "simple-agents-example"
-version = "0.0.0"
+name = "competition-judge-system"
+version = "0.1.0"
+description = "中国大学生创新大赛AI评委系统后端"
 requires-python = ">=3.13"
 
-# Dependencies that the example actually uses
 dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "supabase>=2.15.0",
+  "python-multipart>=0.0.18",
+  "python-pptx>=1.0.0",
+  "Pillow>=11.0.0",
+  "httpx>=0.28.0",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.7.0",
   "python-dotenv>=1.0",
-  "vision-agents-plugins-deepgram",
-  "vision-agents-plugins-elevenlabs",
-  "vision-agents-plugins-anthropic",
-  "vision-agents-plugins-getstream",
-  "vision-agents-plugins-openai",
-  "vision-agents-plugins-smart-turn",
-  "vision-agents-plugins-cartesia",
-  "vision-agents-plugins-gemini",
-  "vision-agents-plugins-vogent",
-  "vision-agents",
-  "openai>=1.101.0",
-  "anthropic>=0.66.0",
-  "google-genai>=1.33.0",
-  "fal-client>=0.5.3",
-  "pyinstrument>=5.1.1",
+  "python-docx>=1.1.0",
+  "openpyxl>=3.1.0",
+  "PyPDF2>=3.0.0",
   "pytest>=8.0",
   "pytest-asyncio>=1.0",
+  "hypothesis>=6.100.0",
 ]
-
-[tool.uv.sources]
-"vision-agents-plugins-deepgram" = {path = "../../plugins/deepgram", editable=true}
-"vision-agents-plugins-elevenlabs" = {path = "../../plugins/elevenlabs", editable=true}
-"vision-agents-plugins-anthropic" = {path = "../../plugins/anthropic", editable=true}
-"vision-agents-plugins-getstream" = {path = "../../plugins/getstream", editable=true}
-"vision-agents-plugins-openai" = {path = "../../plugins/openai", editable=true}
-"vision-agents-plugins-smart-turn" = {path = "../../plugins/smart_turn", editable=true}
-"vision-agents-plugins-cartesia" = {path = "../../plugins/cartesia", editable=true}
-"vision-agents-plugins-gemini" = {path = "../../plugins/gemini", editable=true}
-"vision-agents-plugins-vogent" = {path = "../../plugins/vogent", editable=true}
-"vision-agents" = {path = "../../agents-core", editable=true}
