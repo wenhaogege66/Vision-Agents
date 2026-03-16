@@ -147,7 +147,14 @@ class LiveSessionCreate(BaseModel):
 class ModeSwitch(BaseModel):
     """切换路演交互模式的请求体"""
 
+    session_id: str  # 路演会话ID
     mode: str  # question 或 suggestion
+
+
+class LiveSessionEnd(BaseModel):
+    """结束路演会话的请求体"""
+
+    session_id: str  # 路演会话ID
 
 
 # ── 评委风格相关 ──────────────────────────────────────────────

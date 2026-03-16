@@ -16,6 +16,7 @@ from app.models.schemas import (
     UserInfo,
 )
 from app.routes.auth import get_current_user
+from app.services.offline_review_service import OfflineReviewService
 from app.services.text_review_service import TextReviewService
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,12 @@ def _get_text_review_service(
     return TextReviewService(supabase)
 
 
+def _get_offline_review_service(
+    supabase: Client = Depends(get_supabase),
+) -> OfflineReviewService:
+    return OfflineReviewService(supabase)
+
+
 # ── POST /api/projects/{project_id}/reviews/text ─────────────
 
 
@@ -42,6 +49,25 @@ async def create_text_review(
     svc: TextReviewService = Depends(_get_text_review_service),
 ):
     """发起文本评审"""
+    return await svc.review(
+        project_id=project_id,
+        user_id=user.id,
+        stage=body.stage,
+        judge_style=body.judge_style,
+    )
+
+
+# ── POST /api/projects/{project_id}/reviews/offline ──────────
+
+
+@router.post("/offline", response_model=ReviewResult)
+async def create_offline_review(
+    project_id: str,
+    body: ReviewRequest,
+    user: UserInfo = Depends(get_current_user),
+    svc: OfflineReviewService = Depends(_get_offline_review_service),
+):
+    """发起离线路演评审"""
     return await svc.review(
         project_id=project_id,
         user_id=user.id,

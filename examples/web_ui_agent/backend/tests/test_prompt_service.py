@@ -419,9 +419,9 @@ class TestProperty18PromptAssemblyOrder:
     """
 
     @given(
-        rules_content=_nonempty_text(),
-        knowledge_content=_nonempty_text(),
-        material_content=_nonempty_text(),
+        rules_suffix=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))).filter(lambda s: s.strip()),
+        knowledge_suffix=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))).filter(lambda s: s.strip()),
+        material_suffix=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))).filter(lambda s: s.strip()),
         template_name=st.sampled_from(["text_review", "live_presentation", "offline_review"]),
         style_id=st.sampled_from(["strict", "gentle", "academic"]),
     )
@@ -429,18 +429,22 @@ class TestProperty18PromptAssemblyOrder:
     def test_section_order_is_correct(
         self,
         pbt_prompt_dir: Path,
-        rules_content: str,
-        knowledge_content: str,
-        material_content: str,
+        rules_suffix: str,
+        knowledge_suffix: str,
+        material_suffix: str,
         template_name: str,
         style_id: str,
     ):
+        # Use unique prefixes to ensure content strings don't collide with template text
+        rules_content = f"RULES_MARKER_{rules_suffix}"
+        knowledge_content = f"KNOWLEDGE_MARKER_{knowledge_suffix}"
+        material_content = f"MATERIAL_MARKER_{material_suffix}"
+
         # Ensure no content string is a substring of another so index checks are unambiguous
-        r, k, m = rules_content.strip(), knowledge_content.strip(), material_content.strip()
-        assume(r != k and r != m and k != m)
-        assume(r not in k and k not in r)
-        assume(r not in m and m not in r)
-        assume(k not in m and m not in k)
+        assume(rules_content != knowledge_content and rules_content != material_content and knowledge_content != material_content)
+        assume(rules_content not in knowledge_content and knowledge_content not in rules_content)
+        assume(rules_content not in material_content and material_content not in rules_content)
+        assume(knowledge_content not in material_content and material_content not in knowledge_content)
 
         svc = PromptService(prompts_base=pbt_prompt_dir)
         prompt = svc.assemble_prompt(

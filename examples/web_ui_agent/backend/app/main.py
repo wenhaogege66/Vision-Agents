@@ -71,16 +71,20 @@ async def generic_exception_handler(_request: Request, exc: Exception) -> JSONRe
 from app.routes.auth import router as auth_router
 from app.routes.competitions import router as competitions_router
 from app.routes.judge_styles import router as judge_styles_router
+from app.routes.live_presentation import router as live_presentation_router
 from app.routes.materials import router as materials_router
 from app.routes.projects import router as projects_router
 from app.routes.reviews import router as reviews_router
+from app.routes.voices import router as voices_router
 
 app.include_router(auth_router)
 app.include_router(competitions_router)
 app.include_router(judge_styles_router)
+app.include_router(live_presentation_router)
 app.include_router(materials_router)
 app.include_router(projects_router)
 app.include_router(reviews_router)
+app.include_router(voices_router)
 
 
 @app.get("/health")

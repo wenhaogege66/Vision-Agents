@@ -170,8 +170,8 @@
     - **Property 17: 评审记录类型与材料版本关联**
     - **Validates: Requirements 4.1, 4.3, 4.6, 12.5**
 
-- [ ] 8. 离线路演评审服务
-  - [ ] 8.1 实现OfflineReviewService（离线路演评审）
+- [x] 8. 离线路演评审服务
+  - [x] 8.1 实现OfflineReviewService（离线路演评审）
     - 创建 `app/services/offline_review_service.py`
     - 实现 `review(project_id, user_id, stage, judge_style)`：
       1. 从MaterialService获取最新路演PPT和路演视频
@@ -183,19 +183,19 @@
       7. 存储评审记录
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-  - [ ] 8.2 扩展评审路由支持离线评审
+  - [x] 8.2 扩展评审路由支持离线评审
     - 在 `app/routes/reviews.py` 中添加 `POST /api/projects/{id}/reviews/offline` 端点
     - _Requirements: 8.1_
 
-  - [ ] 8.3 编写离线评审属性测试
+  - [x] 8.3 编写离线评审属性测试
     - **Property 13: 离线评审报告完整性**
     - **Validates: Requirements 8.3, 8.4**
 
-- [ ] 9. Checkpoint - 确保评审服务测试通过
+- [x] 9. Checkpoint - 确保评审服务测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. 音色管理服务
-  - [ ] 10.1 实现VoiceService（音色管理）
+- [x] 10. 音色管理服务
+  - [x] 10.1 实现VoiceService（音色管理）
     - 创建 `app/services/voice_service.py`
     - 实现 `list_preset_voices()`：返回Qwen-Omni-Realtime的49种预设音色列表（含中文名称和描述）
     - 实现 `clone_voice(user_id, audio_file, preferred_name)`：验证音频格式/大小/时长，调用 `qwen-voice-enrollment` API，存储voice标识到 `custom_voices` 表
@@ -204,18 +204,18 @@
     - 实现 `get_voice_for_session(voice_id, voice_type)`：根据音色类型返回session.update参数
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
 
-  - [ ] 10.2 实现音色管理路由
+  - [x] 10.2 实现音色管理路由
     - 创建 `app/routes/voices.py`（或在现有路由中扩展）
     - 实现 `GET /api/voices/presets`、`GET /api/voices/custom`、`POST /api/voices/clone`、`DELETE /api/voices/custom/{voice_id}` 端点
     - _Requirements: 14.1, 14.4, 14.6, 14.9_
 
-  - [ ] 10.3 编写音色管理属性测试
+  - [x] 10.3 编写音色管理属性测试
     - **Property 21: 预设音色设置正确性**
     - **Property 22: 声音复刻音频验证**
     - **Validates: Requirements 14.3, 14.4, 14.9**
 
-- [ ] 11. 现场路演服务
-  - [ ] 11.1 实现LivePresentationService（现场路演）
+- [x] 11. 现场路演服务
+  - [x] 11.1 实现LivePresentationService（现场路演）
     - 创建 `app/services/live_presentation_service.py`
     - 实现 `start_session(project_id, user_id, mode, style, voice, voice_type)`：
       1. 从MaterialService获取最新路演PPT
@@ -228,20 +228,20 @@
     - 实现 `end_session(session_id)`：结束路演会话，生成评审总结并存储
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [ ] 11.2 实现现场路演路由
+  - [x] 11.2 实现现场路演路由
     - 创建 `app/routes/live_presentation.py`
     - 实现 `POST /api/projects/{id}/live/start`、`POST /api/projects/{id}/live/mode`、`POST /api/projects/{id}/live/end` 端点
     - _Requirements: 6.1, 7.1, 7.4_
 
-  - [ ] 11.3 编写现场路演属性测试
+  - [x] 11.3 编写现场路演属性测试
     - **Property 12: 路演交互模式指令差异性**
     - **Validates: Requirements 7.2, 7.3**
 
-- [ ] 12. Checkpoint - 确保后端所有服务测试通过
+- [x] 12. Checkpoint - 确保后端所有服务测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. 前端项目初始化与基础组件
-  - [ ] 13.1 初始化React + TypeScript前端项目
+- [x] 13. 前端项目初始化与基础组件
+  - [x] 13.1 初始化React + TypeScript前端项目
     - 在 `examples/web_ui_agent/frontend/` 下使用 Vite 初始化 React + TypeScript 项目
     - 安装依赖：antd（UI组件库）、axios（HTTP客户端）、recharts（图表）、@stream-io/video-react-sdk（GetStream视频）、react-router-dom
     - 配置 `tsconfig.json`、`vite.config.ts`（API代理到后端）
@@ -249,13 +249,13 @@
     - 创建 `src/services/api.ts`：封装axios实例和API调用函数
     - _Requirements: 11.1, 11.2, 11.6_
 
-  - [ ] 13.2 实现认证页面和路由守卫
+  - [x] 13.2 实现认证页面和路由守卫
     - 创建 `src/pages/Login.tsx` 和 `src/pages/Register.tsx`
     - 实现认证上下文（AuthContext）管理登录状态和token
     - 实现路由守卫（ProtectedRoute），未登录跳转登录页
     - _Requirements: 9.1, 11.3_
 
-  - [ ] 13.3 实现项目管理页面
+  - [x] 13.3 实现项目管理页面
     - 创建 `src/pages/ProjectList.tsx`：项目列表页，展示用户所有项目和创建入口
     - 创建 `src/pages/ProjectCreate.tsx`：项目创建页，包含 `CompetitionSelector` 三级联动选择器
     - 创建 `src/pages/ProjectDashboard.tsx`：项目概览仪表盘，展示比赛阶段进度和各阶段评审状态
@@ -263,13 +263,13 @@
     - _Requirements: 1.1, 1.2, 1.3, 9.2, 9.3, 9.4, 9.7, 11.4_
 
 - [ ] 14. 前端核心功能页面
-  - [ ] 14.1 实现材料中心页面
+  - [~] 14.1 实现材料中心页面
     - 创建 `src/pages/MaterialCenter.tsx`：展示四大核心材料上传状态和操作
     - 实现文件上传组件（含格式和大小前端校验）
     - 实现材料版本历史查看
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-  - [ ] 14.2 实现文本评审页面和结果展示
+  - [~] 14.2 实现文本评审页面和结果展示
     - 创建 `src/pages/TextReview.tsx`：发起文本评审页面，包含 `JudgeStyleSelector` 评委风格选择器
     - 创建 `src/components/TextReviewPanel.tsx`：评审结果展示面板
     - 创建 `src/components/RadarChart.tsx`：评分雷达图组件（使用recharts，维度标签和满分值动态调整）
@@ -277,12 +277,12 @@
     - 展示各维度评分、子项评价、改进建议
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 13.4_
 
-  - [ ] 14.3 实现评审历史页面
+  - [~] 14.3 实现评审历史页面
     - 创建 `src/pages/ReviewHistory.tsx`：评审记录列表，区分文本评审和路演评审
     - 创建 `src/pages/ReviewDetail.tsx`：评审详情页面，含导出PDF功能
     - _Requirements: 5.5, 5.6, 9.5, 9.6_
 
-  - [ ] 14.4 实现现场路演页面
+  - [~] 14.4 实现现场路演页面
     - 创建 `src/pages/LivePresentation.tsx`：现场路演页面
     - 集成GetStream Video SDK实现音视频通话
     - 创建 `src/components/ModeSwitch.tsx`：提问/建议模式切换组件，清晰标识当前模式
@@ -292,13 +292,13 @@
     - 自定义音色选择时提示TTS合成模式延迟较高
     - _Requirements: 6.1, 6.6, 7.1, 7.5, 11.5, 14.1, 14.2, 14.6, 14.7, 14.8_
 
-  - [ ] 14.5 实现离线路演评审页面
+  - [~] 14.5 实现离线路演评审页面
     - 创建 `src/pages/OfflineReview.tsx`：离线路演评审页面
     - 展示评审进度和结果（演讲表现、PPT内容、综合评分、改进建议）
     - _Requirements: 8.1, 8.3, 8.4_
 
 - [ ] 15. 前端布局与响应式设计
-  - [ ] 15.1 实现应用布局和首页
+  - [~] 15.1 实现应用布局和首页
     - 创建 `src/components/AppLayout.tsx`：统一布局组件（导航栏、侧边栏）
     - 创建 `src/pages/Home.tsx`：首页，提供PPT评审和现场路演两个功能入口
     - 配置 `react-router-dom` 路由表
@@ -306,22 +306,22 @@
     - _Requirements: 11.3, 11.4_
 
 - [ ] 16. 部署配置
-  - [ ] 16.1 创建Docker部署配置
+  - [~] 16.1 创建Docker部署配置
     - 创建 `examples/web_ui_agent/backend/Dockerfile`：后端容器化配置
     - 创建 `examples/web_ui_agent/docker-compose.yml`：编排前后端服务
     - _Requirements: 10.6_
 
-- [ ] 17. Checkpoint - 确保前后端集成测试通过
+- [~] 17. Checkpoint - 确保前后端集成测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 18. 数据库迁移脚本
-  - [ ] 18.1 创建Supabase数据库迁移SQL
+  - [~] 18.1 创建Supabase数据库迁移SQL
     - 创建 `examples/web_ui_agent/backend/migrations/` 目录
     - 编写SQL迁移脚本：创建 profiles, projects, project_materials, reviews, review_details, custom_voices 表及索引
     - 包含 RLS（Row Level Security）策略：用户只能访问自己的项目和评审记录
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-- [ ] 19. Final Checkpoint - 确保所有测试通过
+- [~] 19. Final Checkpoint - 确保所有测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
