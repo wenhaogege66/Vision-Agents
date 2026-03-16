@@ -112,6 +112,13 @@ class ProjectCreate(BaseModel):
     group: str
 
 
+class ProjectUpdate(BaseModel):
+    """更新项目的请求体"""
+
+    name: str | None = None
+    current_stage: str | None = None
+
+
 class ProjectResponse(BaseModel):
     """项目详情响应"""
 
@@ -174,6 +181,39 @@ class CustomVoiceInfo(BaseModel):
     preferred_name: str  # 用户指定的音色名称
     target_model: str  # 驱动音色的TTS模型
     created_at: datetime
+
+
+# ── 认证相关 ─────────────────────────────────────────────────
+
+
+class RegisterRequest(BaseModel):
+    """用户注册请求"""
+
+    email: str
+    password: str
+    display_name: str
+
+
+class LoginRequest(BaseModel):
+    """用户登录请求"""
+
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    """认证成功响应（登录/注册）"""
+
+    access_token: str
+    user: "UserInfo"
+
+
+class UserInfo(BaseModel):
+    """用户信息"""
+
+    id: str
+    email: str
+    display_name: str | None = None
 
 
 # ── 错误响应 ─────────────────────────────────────────────────

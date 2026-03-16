@@ -42,7 +42,7 @@
     - 支持 .md, .pdf, .docx, .xlsx 格式的规则文件读取
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4_
 
-  - [ ]* 2.2 编写RuleService属性测试
+  - [x] 2.2 编写RuleService属性测试
     - **Property 1: 赛事级联选择一致性**
     - **Property 2: 无规则组合的错误处理**
     - **Property 3: 评审规则路径构造正确性**
@@ -61,21 +61,21 @@
     - 创建 `knowledge/` 目录结构和示例知识库文件
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.5_
 
-- [ ] 3. 用户认证与项目管理
-  - [ ] 3.1 实现AuthService和认证路由
+- [x] 3. 用户认证与项目管理
+  - [x] 3.1 实现AuthService和认证路由
     - 创建 `app/services/auth_service.py`：封装 Supabase Auth（注册、登录、获取当前用户）
     - 创建 `app/routes/auth.py`：实现 `/api/auth/register`, `/api/auth/login`, `/api/auth/me` 端点
     - 实现JWT token验证依赖项（FastAPI Depends）
     - _Requirements: 9.1_
 
-  - [ ] 3.2 实现ProjectService和项目管理路由
+  - [x] 3.2 实现ProjectService和项目管理路由
     - 创建 `app/services/project_service.py`：项目CRUD操作（创建、列表、详情、更新）
     - 创建 `app/routes/projects.py`：实现项目管理API端点
     - 项目创建时验证必填字段（名称、赛事、赛道、组别）
     - 项目列表返回材料上传状态和当前比赛阶段
     - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.7_
 
-  - [ ]* 3.3 编写项目管理属性测试
+  - [x] 3.3 编写项目管理属性测试
     - **Property 14: 项目创建字段验证**
     - **Property 15: 项目与评审记录的CRUD一致性**
     - **Property 16: 项目数据持久化往返**

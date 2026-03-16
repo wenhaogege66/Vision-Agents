@@ -317,3 +317,287 @@ class TestExtractSubItems:
 
     def test_empty_section(self):
         assert _extract_sub_items("") == []
+
+
+# ── 属性测试 (Property-Based Tests) ──────────────────────────
+#
+# 使用 hypothesis 验证 RuleService 的通用正确性属性。
+# Feature: competition-judge-system
+
+from hypothesis import given, settings, assume
+import hypothesis.strategies as st
+
+
+def _dir_name_strategy() -> st.SearchStrategy[str]:
+    """生成合法的目录名（小写字母+下划线，非空）"""
+    return st.from_regex(r"[a-z][a-z_]{0,19}", fullmatch=True)
+
+
+def _build_rules_tree(
+    tmp_path: Path,
+    competitions: list[tuple[str, list[tuple[str, list[str]]]]],
+) -> Path:
+    """辅助函数：根据结构描述创建规则目录树。
+
+    每个有规则的组别会生成一个维度总分为100的 rules.md。
+    """
+    for comp, tracks in competitions:
+        for track, groups in tracks:
+            for group in groups:
+                group_dir = tmp_path / comp / track / group
+                group_dir.mkdir(parents=True, exist_ok=True)
+                # 生成总分100的规则文件
+                (group_dir / "rules.md").write_text(
+                    textwrap.dedent(f"""\
+                    # {comp}/{track}/{group} 评审规则
+
+                    ## 维度A（40分）
+
+                    - 子项1
+                    - 子项2
+
+                    ## 维度B（35分）
+
+                    - 子项3
+
+                    ## 维度C（25分）
+
+                    - 子项4
+                    """),
+                    encoding="utf-8",
+                )
+    return tmp_path
+
+
+class TestProperty1CascadeConsistency:
+    """Property 1: 赛事级联选择一致性
+
+    对于任意有效的赛事类型，查询其赛道列表应返回非空结果；
+    对于任意有效的赛事+赛道组合，查询其组别列表应返回非空结果；
+    对于任意有效的赛事+赛道+组别组合且存在规则文件时，加载规则应返回包含评审维度的规则对象。
+
+    Feature: competition-judge-system, Property 1: 赛事级联选择一致性
+    Validates: Requirements 1.2, 1.3, 1.4
+    """
+
+    @given(
+        comp=_dir_name_strategy(),
+        track=_dir_name_strategy(),
+        group=_dir_name_strategy(),
+    )
+    @settings(max_examples=100)
+    def test_cascade_selection_consistency(
+        self, tmp_path_factory, comp: str, track: str, group: str
+    ):
+        # 确保三级名称互不相同，避免路径冲突
+        assume(comp != track and track != group and comp != group)
+
+        base = tmp_path_factory.mktemp("rules")
+        _build_rules_tree(base, [(comp, [(track, [group])])])
+        svc = RuleService(rules_base=base)
+
+        # 赛事列表非空
+        competitions = svc.list_competitions()
+        assert len(competitions) > 0
+        assert any(c.id == comp for c in competitions)
+
+        # 赛道列表非空
+        tracks = svc.list_tracks(comp)
+        assert len(tracks) > 0
+        assert any(t.id == track for t in tracks)
+
+        # 组别列表非空
+        groups = svc.list_groups(comp, track)
+        assert len(groups) > 0
+        assert any(g.id == group for g in groups)
+
+        # 有规则的组别能成功加载，且包含评审维度
+        rules = svc.load_rules(comp, track, group)
+        assert len(rules.dimensions) > 0
+
+
+class TestProperty2NoRulesErrorHandling:
+    """Property 2: 无规则组合的错误处理
+
+    对于任意不存在对应规则文件的赛事/赛道/组别组合，
+    调用规则加载服务应返回明确的错误信息而非空结果或异常崩溃。
+
+    Feature: competition-judge-system, Property 2: 无规则组合的错误处理
+    Validates: Requirements 1.5
+    """
+
+    @given(
+        comp=_dir_name_strategy(),
+        track=_dir_name_strategy(),
+        group=_dir_name_strategy(),
+    )
+    @settings(max_examples=100)
+    def test_missing_rules_raises_file_not_found(
+        self, tmp_path_factory, comp: str, track: str, group: str
+    ):
+        assume(comp != track and track != group and comp != group)
+
+        base = tmp_path_factory.mktemp("rules")
+        # 创建目录结构但不放规则文件
+        (base / comp / track / group).mkdir(parents=True, exist_ok=True)
+        svc = RuleService(rules_base=base)
+
+        # has_rules 应返回 False
+        assert svc.has_rules(comp, track, group) is False
+
+        # load_rules 应抛出 FileNotFoundError，而非返回空或崩溃
+        with pytest.raises(FileNotFoundError) as exc_info:
+            svc.load_rules(comp, track, group)
+
+        # 错误信息应包含路径信息，便于定位
+        assert comp in str(exc_info.value)
+        assert track in str(exc_info.value)
+        assert group in str(exc_info.value)
+
+    @given(
+        comp=_dir_name_strategy(),
+        track=_dir_name_strategy(),
+        group=_dir_name_strategy(),
+    )
+    @settings(max_examples=100)
+    def test_completely_nonexistent_path(
+        self, tmp_path_factory, comp: str, track: str, group: str
+    ):
+        """完全不存在的路径也应抛出 FileNotFoundError"""
+        base = tmp_path_factory.mktemp("empty")
+        svc = RuleService(rules_base=base)
+
+        assert svc.has_rules(comp, track, group) is False
+
+        with pytest.raises(FileNotFoundError):
+            svc.load_rules(comp, track, group)
+
+
+class TestProperty3PathConstruction:
+    """Property 3: 评审规则路径构造正确性
+
+    对于任意赛事类型、赛道和组别的组合，规则服务构造的文件路径
+    应严格遵循 rules/{赛事}/{赛道}/{组别}/ 的格式。
+
+    Feature: competition-judge-system, Property 3: 评审规则路径构造正确性
+    Validates: Requirements 2.3
+    """
+
+    @given(
+        comp=_dir_name_strategy(),
+        track=_dir_name_strategy(),
+        group=_dir_name_strategy(),
+    )
+    @settings(max_examples=100)
+    def test_path_follows_convention(
+        self, tmp_path_factory, comp: str, track: str, group: str
+    ):
+        assume(comp != track and track != group and comp != group)
+
+        base = tmp_path_factory.mktemp("rules")
+        _build_rules_tree(base, [(comp, [(track, [group])])])
+        svc = RuleService(rules_base=base)
+
+        rules = svc.load_rules(comp, track, group)
+
+        # 验证返回的规则对象正确记录了三级路径信息
+        assert rules.competition == comp
+        assert rules.track == track
+        assert rules.group == group
+
+        # 验证实际的文件系统路径遵循 {base}/{comp}/{track}/{group}/ 结构
+        expected_dir = base / comp / track / group
+        assert expected_dir.is_dir()
+        # 规则文件应存在于该目录下
+        assert any(
+            (expected_dir / f).is_file()
+            for f in ["rules.md", "rules.pdf", "rules.docx", "rules.xlsx"]
+        )
+
+
+class TestProperty4DimensionCompleteness:
+    """Property 4: 评审规则维度完整性
+
+    对于任意成功加载的评审规则，其所有维度的满分之和应等于100分，
+    且每个维度的满分值大于0。
+
+    Feature: competition-judge-system, Property 4: 评审规则维度完整性
+    Validates: Requirements 2.4
+    """
+
+    @given(
+        num_dims=st.integers(min_value=2, max_value=8),
+        data=st.data(),
+    )
+    @settings(max_examples=100)
+    def test_dimensions_sum_to_100_and_positive(
+        self, tmp_path_factory, num_dims: int, data: st.DataObject
+    ):
+        """动态生成N个维度（总分100），验证解析后满分之和为100且每项>0"""
+        # 生成 num_dims 个正整数，总和为100
+        raw_scores = data.draw(
+            st.lists(
+                st.integers(min_value=1, max_value=97),
+                min_size=num_dims,
+                max_size=num_dims,
+            )
+        )
+        total_raw = sum(raw_scores)
+        assume(total_raw > 0)
+        # 归一化到总分100（整数分配）
+        scores = [int(s * 100 / total_raw) for s in raw_scores]
+        # 把余数加到最后一个维度
+        remainder = 100 - sum(scores)
+        scores[-1] += remainder
+        # 确保所有分值 > 0
+        assume(all(s > 0 for s in scores))
+
+        # 构建规则文件
+        lines = ["# 测试评审规则\n"]
+        for i, score in enumerate(scores):
+            lines.append(f"## 维度{i+1}（{score}分）\n")
+            lines.append(f"- 子项{i+1}a\n")
+
+        base = tmp_path_factory.mktemp("rules")
+        group_dir = base / "test_comp" / "test_track" / "test_group"
+        group_dir.mkdir(parents=True)
+        (group_dir / "rules.md").write_text("".join(lines), encoding="utf-8")
+
+        svc = RuleService(rules_base=base)
+        rules = svc.load_rules("test_comp", "test_track", "test_group")
+
+        # 属性验证：维度数量匹配
+        assert len(rules.dimensions) == num_dims
+
+        # 属性验证：每个维度满分 > 0
+        for dim in rules.dimensions:
+            assert dim.max_score > 0, f"维度 {dim.name} 满分应大于0"
+
+        # 属性验证：满分之和 == 100
+        total = sum(d.max_score for d in rules.dimensions)
+        assert total == 100.0, f"维度满分之和应为100，实际为{total}"
+
+    def test_real_rules_dimensions_sum_to_100(self):
+        """验证实际 rules/ 目录下所有规则文件的维度满分之和为100"""
+        svc = RuleService()  # 使用默认的 rules/ 目录
+        if not svc.rules_base.is_dir():
+            pytest.skip("rules/ 目录不存在")
+
+        for comp_info in svc.list_competitions():
+            for track_info in svc.list_tracks(comp_info.id):
+                for group_info in svc.list_groups(comp_info.id, track_info.id):
+                    if not group_info.has_rules:
+                        continue
+                    rules = svc.load_rules(
+                        comp_info.id, track_info.id, group_info.id
+                    )
+                    total = sum(d.max_score for d in rules.dimensions)
+                    assert total == 100.0, (
+                        f"{comp_info.id}/{track_info.id}/{group_info.id} "
+                        f"维度满分之和为{total}，应为100"
+                    )
+                    for dim in rules.dimensions:
+                        assert dim.max_score > 0, (
+                            f"{comp_info.id}/{track_info.id}/{group_info.id} "
+                            f"维度 {dim.name} 满分应大于0"
+                        )
