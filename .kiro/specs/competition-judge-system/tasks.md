@@ -111,8 +111,8 @@
 - [x] 5. Checkpoint - 确保基础服务测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Prompt模板与评委风格服务
-  - [ ] 6.1 实现PromptService（Prompt模板管理）
+- [x] 6. Prompt模板与评委风格服务
+  - [x] 6.1 实现PromptService（Prompt模板管理）
     - 创建 `app/services/prompt_service.py`
     - 实现 `list_styles()`：扫描 `prompts/styles/` 目录返回可用评委风格列表
     - 实现 `load_style(style_id)`：加载指定风格的角色描述Markdown文件
@@ -120,7 +120,7 @@
     - 实现 `assemble_prompt(template_name, style_id, rules_content, knowledge_content, material_content, interaction_mode)`：按顺序拼接最终prompt（角色描述→评审规则→知识库→材料→输出格式）
     - _Requirements: 13.1, 13.2, 13.5, 13.6, 13.7_
 
-  - [ ] 6.2 创建Prompt模板文件和评委风格文件
+  - [x] 6.2 创建Prompt模板文件和评委风格文件
     - 创建 `prompts/templates/text_review.md`：文本评审prompt模板（含占位符）
     - 创建 `prompts/templates/live_presentation.md`：现场路演prompt模板
     - 创建 `prompts/templates/offline_review.md`：离线评审prompt模板
@@ -129,11 +129,11 @@
     - 创建 `prompts/styles/academic.md`：学术型评委角色描述
     - _Requirements: 13.2, 13.3, 13.8_
 
-  - [ ] 6.3 实现评委风格路由
+  - [x] 6.3 实现评委风格路由
     - 创建或扩展路由：实现 `GET /api/judge-styles` 端点
     - _Requirements: 13.4_
 
-  - [ ] 6.4 编写PromptService属性测试
+  - [x] 6.4 编写PromptService属性测试
     - **Property 5: 评审Prompt组装完整性**
     - **Property 18: Prompt模板组装顺序正确性**
     - **Property 19: 评委风格切换有效性**
