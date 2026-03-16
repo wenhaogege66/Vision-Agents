@@ -262,14 +262,14 @@
     - 创建 `src/components/CompetitionSelector.tsx`：赛事/赛道/组别三级联动选择组件
     - _Requirements: 1.1, 1.2, 1.3, 9.2, 9.3, 9.4, 9.7, 11.4_
 
-- [ ] 14. 前端核心功能页面
-  - [~] 14.1 实现材料中心页面
+- [x] 14. 前端核心功能页面
+  - [x] 14.1 实现材料中心页面
     - 创建 `src/pages/MaterialCenter.tsx`：展示四大核心材料上传状态和操作
     - 实现文件上传组件（含格式和大小前端校验）
     - 实现材料版本历史查看
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-  - [~] 14.2 实现文本评审页面和结果展示
+  - [x] 14.2 实现文本评审页面和结果展示
     - 创建 `src/pages/TextReview.tsx`：发起文本评审页面，包含 `JudgeStyleSelector` 评委风格选择器
     - 创建 `src/components/TextReviewPanel.tsx`：评审结果展示面板
     - 创建 `src/components/RadarChart.tsx`：评分雷达图组件（使用recharts，维度标签和满分值动态调整）
@@ -277,12 +277,12 @@
     - 展示各维度评分、子项评价、改进建议
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 13.4_
 
-  - [~] 14.3 实现评审历史页面
+  - [x] 14.3 实现评审历史页面
     - 创建 `src/pages/ReviewHistory.tsx`：评审记录列表，区分文本评审和路演评审
     - 创建 `src/pages/ReviewDetail.tsx`：评审详情页面，含导出PDF功能
     - _Requirements: 5.5, 5.6, 9.5, 9.6_
 
-  - [~] 14.4 实现现场路演页面
+  - [x] 14.4 实现现场路演页面
     - 创建 `src/pages/LivePresentation.tsx`：现场路演页面
     - 集成GetStream Video SDK实现音视频通话
     - 创建 `src/components/ModeSwitch.tsx`：提问/建议模式切换组件，清晰标识当前模式
@@ -292,36 +292,36 @@
     - 自定义音色选择时提示TTS合成模式延迟较高
     - _Requirements: 6.1, 6.6, 7.1, 7.5, 11.5, 14.1, 14.2, 14.6, 14.7, 14.8_
 
-  - [~] 14.5 实现离线路演评审页面
+  - [x] 14.5 实现离线路演评审页面
     - 创建 `src/pages/OfflineReview.tsx`：离线路演评审页面
     - 展示评审进度和结果（演讲表现、PPT内容、综合评分、改进建议）
     - _Requirements: 8.1, 8.3, 8.4_
 
-- [ ] 15. 前端布局与响应式设计
-  - [~] 15.1 实现应用布局和首页
+- [x] 15. 前端布局与响应式设计
+  - [x] 15.1 实现应用布局和首页
     - 创建 `src/components/AppLayout.tsx`：统一布局组件（导航栏、侧边栏）
     - 创建 `src/pages/Home.tsx`：首页，提供PPT评审和现场路演两个功能入口
     - 配置 `react-router-dom` 路由表
     - 实现响应式布局适配桌面端和移动端
     - _Requirements: 11.3, 11.4_
 
-- [ ] 16. 部署配置
-  - [~] 16.1 创建Docker部署配置
+- [x] 16. 部署配置
+  - [x] 16.1 创建Docker部署配置
     - 创建 `examples/web_ui_agent/backend/Dockerfile`：后端容器化配置
     - 创建 `examples/web_ui_agent/docker-compose.yml`：编排前后端服务
     - _Requirements: 10.6_
 
-- [~] 17. Checkpoint - 确保前后端集成测试通过
+- [x] 17. Checkpoint - 确保前后端集成测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 18. 数据库迁移脚本
-  - [~] 18.1 创建Supabase数据库迁移SQL
+- [x] 18. 数据库迁移脚本
+  - [x] 18.1 创建Supabase数据库迁移SQL
     - 创建 `examples/web_ui_agent/backend/migrations/` 目录
     - 编写SQL迁移脚本：创建 profiles, projects, project_materials, reviews, review_details, custom_voices 表及索引
     - 包含 RLS（Row Level Security）策略：用户只能访问自己的项目和评审记录
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-- [~] 19. Final Checkpoint - 确保所有测试通过
+- [x] 19. Final Checkpoint - 确保所有测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
