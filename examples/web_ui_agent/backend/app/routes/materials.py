@@ -1,0 +1,99 @@
+"""材料管理路由：上传、查询、版本历史。"""
+
+import logging
+
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from supabase import Client
+
+from app.models.database import get_supabase
+from app.models.schemas import MaterialUploadResponse, UserInfo
+from app.routes.auth import get_current_user
+from app.services.material_service import MaterialService
+from app.services.ppt_convert_service import PPTConvertService
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/api/projects/{project_id}/materials", tags=["materials"]
+)
+
+# PPT 类型需要自动转换为图像
+_PPT_TYPES = {"text_ppt", "presentation_ppt"}
+
+
+def _get_material_service(supabase: Client = Depends(get_supabase)) -> MaterialService:
+    return MaterialService(supabase)
+
+
+def _get_ppt_convert_service(
+    supabase: Client = Depends(get_supabase),
+) -> PPTConvertService:
+    return PPTConvertService(supabase)
+
+
+@router.post("", response_model=MaterialUploadResponse)
+async def upload_material(
+    project_id: str,
+    material_type: str = Form(...),
+    file: UploadFile = File(...),
+    user: UserInfo = Depends(get_current_user),
+    svc: MaterialService = Depends(_get_material_service),
+    ppt_svc: PPTConvertService = Depends(_get_ppt_convert_service),
+):
+    """上传材料，PPT类型自动触发图像转换。"""
+    result = await svc.upload(project_id, material_type, file)
+
+    # PPT 类型且文件扩展名为 .pptx 时自动转换
+    filename = file.filename or ""
+    if material_type in _PPT_TYPES and filename.lower().endswith(".pptx"):
+        try:
+            storage_path = (
+                f"{project_id}/{material_type}/v{result.version}_{filename}"
+            )
+            image_paths = await ppt_svc.convert_to_images(storage_path)
+            await ppt_svc.update_material_image_paths(result.id, image_paths)
+        except Exception:
+            logger.exception("PPT自动转换失败，材料已上传但图像未生成")
+
+    return result
+
+
+@router.get("")
+async def list_materials(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+    svc: MaterialService = Depends(_get_material_service),
+):
+    """获取项目所有最新材料列表。"""
+    all_types = ["bp", "text_ppt", "presentation_ppt", "presentation_video"]
+    materials = []
+    for mt in all_types:
+        item = await svc.get_latest(project_id, mt)
+        if item:
+            materials.append(item)
+    return materials
+
+
+@router.get("/{material_type}")
+async def get_material(
+    project_id: str,
+    material_type: str,
+    user: UserInfo = Depends(get_current_user),
+    svc: MaterialService = Depends(_get_material_service),
+):
+    """获取指定类型的最新材料。"""
+    item = await svc.get_latest(project_id, material_type)
+    if not item:
+        return {"detail": f"未找到类型为 {material_type} 的材料"}
+    return item
+
+
+@router.get("/{material_type}/versions")
+async def get_material_versions(
+    project_id: str,
+    material_type: str,
+    user: UserInfo = Depends(get_current_user),
+    svc: MaterialService = Depends(_get_material_service),
+):
+    """获取指定类型材料的历史版本列表。"""
+    return await svc.get_versions(project_id, material_type)

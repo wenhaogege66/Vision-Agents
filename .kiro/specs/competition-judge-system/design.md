@@ -5,7 +5,7 @@
 本系统是一个面向中国大学生创新大赛的AI评委系统，部署在 `examples/web_ui_agent/` 目录下。系统提供两大核心功能：**AI文本评审**（基于多模态AI分析PPT和BP文档）和**现场路演AI评委**（基于Qwen Realtime模型的实时音视频交互）。
 
 系统采用前后端分离架构：
-- **后端**：Python FastAPI，负责API路由、AI模型调用、文件处理和数据库交互
+- **后端**：Python FastAPI，使用 **uv** 作为包管理器和项目管理工具（通过 `pyproject.toml` + `uv.lock` 管理依赖，不使用 venv/pip），负责API路由、AI模型调用、文件处理和数据库交互
 - **前端**：React + TypeScript，提供用户界面和GetStream视频通话集成
 - **数据库**：Supabase（PostgreSQL + Auth + Storage）
 - **AI模型**：Qwen Realtime（实时路演）+ 通义千问多模态模型（文本评审/离线评审）
@@ -20,6 +20,7 @@
 6. **Prompt模板化管理**：将prompt拆分为固定结构（输出格式、评审流程）和动态片段（角色描述、评审规则、知识库、交互模式），通过模板引擎组装。这样在不同赛事/组别/风格条件下只需替换对应片段，无需维护大量完整prompt副本
 7. **评委风格以配置文件管理**：每种风格对应一个独立的角色描述文件（Markdown），便于非开发人员编辑和扩展新风格
 8. **音色管理分层设计**：预设音色直接通过Qwen-Omni-Realtime的`session.update`设置（零延迟），自定义音色通过`qwen-voice-enrollment`声音复刻API创建后存储voice标识。两种音色在前端统一展示，后端根据音色类型选择不同的语音输出路径
+9. **使用 uv 管理后端项目**：后端使用 [uv](https://docs.astral.sh/uv/) 作为包管理器和项目运行工具，通过 `pyproject.toml` 声明依赖、`uv.lock` 锁定版本。所有命令（启动服务、运行测试等）统一使用 `uv run` 前缀执行（如 `uv run pytest`、`uv run uvicorn app.main:app`），不创建或依赖手动 venv
 
 ## 架构
 
@@ -140,6 +141,7 @@ examples/web_ui_agent/
 │   │       └── academic.md            # 学术型评委
 │   ├── agent.py                       # 现场路演 Agent（基于Vision Agents）
 │   ├── pyproject.toml
+│   ├── uv.lock                        # uv 锁定文件（自动生成，提交到版本控制）
 │   ├── Dockerfile
 │   └── .env.example
 ├── frontend/                          # React + TypeScript 前端
@@ -819,6 +821,7 @@ class ErrorResponse(BaseModel):
 
 ### 属性测试配置
 
+- **包管理与运行**：使用 `uv run` 执行所有测试命令（如 `uv run --project examples/web_ui_agent/backend pytest`），不使用 venv/pip
 - **测试库**：使用 `hypothesis` 作为Python属性测试库
 - **最小迭代次数**：每个属性测试至少运行100次
 - **标签格式**：每个测试用注释标注对应的设计属性

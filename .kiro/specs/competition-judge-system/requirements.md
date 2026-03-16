@@ -174,6 +174,7 @@
 4. THE 评委系统 SHALL 提供 `.env.example` 文件列出所有需要配置的环境变量
 5. THE 评委系统 SHALL 在 `examples/web_ui_agent` 目录下独立运行，不依赖父级项目的本地路径引用
 6. THE 评委系统 SHALL 提供Dockerfile用于容器化部署
+7. THE 评委系统 SHALL 使用 uv 作为后端的包管理器和项目管理工具，通过 `uv run` 执行所有后端命令（启动服务、运行测试等），不创建或依赖手动 venv
 
 ### 需求11：前端界面
 

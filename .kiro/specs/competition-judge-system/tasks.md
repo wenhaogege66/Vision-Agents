@@ -81,8 +81,8 @@
     - **Property 16: 项目数据持久化往返**
     - **Validates: Requirements 9.2, 9.3, 9.5, 9.6, 12.3**
 
-- [ ] 4. 材料管理服务
-  - [ ] 4.1 实现MaterialService（材料上传与管理）
+- [x] 4. 材料管理服务
+  - [x] 4.1 实现MaterialService（材料上传与管理）
     - 创建 `app/services/material_service.py`
     - 实现 `upload(project_id, material_type, file)`：上传文件到Supabase Storage，记录版本信息，将旧版本 `is_latest` 设为 false
     - 实现 `get_latest(project_id, material_type)`：获取最新版本材料
@@ -91,24 +91,24 @@
     - 实现文件大小验证（PPT/BP ≤ 50MB, 视频 ≤ 500MB）
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-  - [ ] 4.2 实现PPTConvertService（PPT转图像）
+  - [x] 4.2 实现PPTConvertService（PPT转图像）
     - 创建 `app/services/ppt_convert_service.py`
     - 实现 `convert_to_images(file_path)`：使用 python-pptx + Pillow 或 LibreOffice 将PPT每页转为PNG图像
     - 上传PPT后自动触发转换，将图像路径存储到 `project_materials.image_paths`
     - _Requirements: 3.9_
 
-  - [ ] 4.3 实现材料管理路由
+  - [x] 4.3 实现材料管理路由
     - 创建 `app/routes/materials.py`：实现材料上传、查询、版本历史的API端点
     - 上传端点在保存文件后，若为PPT类型则自动调用PPTConvertService转换
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.9_
 
-  - [ ]* 4.4 编写材料管理属性测试
+  - [x] 4.4 编写材料管理属性测试
     - **Property 6: 文件格式与大小验证**
     - **Property 7: 材料版本管理一致性**
     - **Property 8: PPT转图像完整性**
     - **Validates: Requirements 3.2, 3.3, 3.4, 3.7, 3.8, 3.9**
 
-- [ ] 5. Checkpoint - 确保基础服务测试通过
+- [x] 5. Checkpoint - 确保基础服务测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 6. Prompt模板与评委风格服务
@@ -133,7 +133,7 @@
     - 创建或扩展路由：实现 `GET /api/judge-styles` 端点
     - _Requirements: 13.4_
 
-  - [ ]* 6.4 编写PromptService属性测试
+  - [ ] 6.4 编写PromptService属性测试
     - **Property 5: 评审Prompt组装完整性**
     - **Property 18: Prompt模板组装顺序正确性**
     - **Property 19: 评委风格切换有效性**
