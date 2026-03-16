@@ -73,12 +73,14 @@ from app.routes.competitions import router as competitions_router
 from app.routes.judge_styles import router as judge_styles_router
 from app.routes.materials import router as materials_router
 from app.routes.projects import router as projects_router
+from app.routes.reviews import router as reviews_router
 
 app.include_router(auth_router)
 app.include_router(competitions_router)
 app.include_router(judge_styles_router)
 app.include_router(materials_router)
 app.include_router(projects_router)
+app.include_router(reviews_router)
 
 
 @app.get("/health")

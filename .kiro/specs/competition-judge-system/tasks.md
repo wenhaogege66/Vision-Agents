@@ -140,8 +140,8 @@
     - **Property 20: 交互模式与评委风格独立性**
     - **Validates: Requirements 2.8, 13.5, 13.6, 13.7**
 
-- [ ] 7. AI文本评审服务
-  - [ ] 7.1 实现TextReviewService（AI文本评审）
+- [x] 7. AI文本评审服务
+  - [x] 7.1 实现TextReviewService（AI文本评审）
     - 创建 `app/services/text_review_service.py`
     - 实现 `review(project_id, user_id, stage, judge_style)`：
       1. 从MaterialService获取最新文本PPT和文本BP
@@ -155,7 +155,7 @@
     - 实现AI API调用失败的重试和错误处理
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8_
 
-  - [ ] 7.2 实现评审路由（文本评审+结果查询+导出）
+  - [x] 7.2 实现评审路由（文本评审+结果查询+导出）
     - 创建 `app/routes/reviews.py`
     - 实现 `POST /api/projects/{id}/reviews/text`：发起文本评审
     - 实现 `GET /api/projects/{id}/reviews`：获取评审记录列表
@@ -163,7 +163,7 @@
     - 实现 `GET /api/projects/{id}/reviews/{review_id}/export`：导出评审报告为PDF
     - _Requirements: 4.1, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 9.5, 9.6_
 
-  - [ ]* 7.3 编写文本评审属性测试
+  - [x] 7.3 编写文本评审属性测试
     - **Property 9: 评审结果使用最新材料**
     - **Property 10: 评审结果结构符合规则**
     - **Property 11: 评审结果持久化往返**
@@ -187,7 +187,7 @@
     - 在 `app/routes/reviews.py` 中添加 `POST /api/projects/{id}/reviews/offline` 端点
     - _Requirements: 8.1_
 
-  - [ ]* 8.3 编写离线评审属性测试
+  - [ ] 8.3 编写离线评审属性测试
     - **Property 13: 离线评审报告完整性**
     - **Validates: Requirements 8.3, 8.4**
 
@@ -209,7 +209,7 @@
     - 实现 `GET /api/voices/presets`、`GET /api/voices/custom`、`POST /api/voices/clone`、`DELETE /api/voices/custom/{voice_id}` 端点
     - _Requirements: 14.1, 14.4, 14.6, 14.9_
 
-  - [ ]* 10.3 编写音色管理属性测试
+  - [ ] 10.3 编写音色管理属性测试
     - **Property 21: 预设音色设置正确性**
     - **Property 22: 声音复刻音频验证**
     - **Validates: Requirements 14.3, 14.4, 14.9**
@@ -233,7 +233,7 @@
     - 实现 `POST /api/projects/{id}/live/start`、`POST /api/projects/{id}/live/mode`、`POST /api/projects/{id}/live/end` 端点
     - _Requirements: 6.1, 7.1, 7.4_
 
-  - [ ]* 11.3 编写现场路演属性测试
+  - [ ] 11.3 编写现场路演属性测试
     - **Property 12: 路演交互模式指令差异性**
     - **Validates: Requirements 7.2, 7.3**
 
