@@ -1,6 +1,8 @@
 """材料管理服务：材料上传、版本管理、查询（Supabase Storage + DB）"""
 
 import logging
+import os
+import uuid
 from datetime import datetime
 
 from fastapi import HTTPException, UploadFile
@@ -25,8 +27,11 @@ class MaterialService:
 
     async def upload(
         self, project_id: str, material_type: str, file: UploadFile
-    ) -> MaterialUploadResponse:
+    ) -> tuple[MaterialUploadResponse, str]:
         """上传文件到 Supabase Storage，记录版本信息。
+
+        Returns:
+            (MaterialUploadResponse, storage_path) 元组
 
         流程：
         1. 验证文件格式和大小
@@ -54,7 +59,10 @@ class MaterialService:
         next_version = await self._next_version(project_id, material_type)
 
         # 3. 上传文件到 Supabase Storage
-        storage_path = f"{project_id}/{material_type}/v{next_version}_{filename}"
+        # Storage path 只使用 ASCII 安全字符（UUID），避免中文文件名导致 InvalidKey 错误
+        ext = os.path.splitext(filename)[1].lower()  # e.g. ".pdf", ".pptx"
+        safe_name = f"v{next_version}_{uuid.uuid4().hex[:8]}{ext}"
+        storage_path = f"{project_id}/{material_type}/{safe_name}"
         try:
             self._sb.storage.from_(STORAGE_BUCKET).upload(
                 path=storage_path,
@@ -104,7 +112,7 @@ class MaterialService:
             ) from exc
 
         row = result.data[0]
-        return self._to_upload_response(row)
+        return self._to_upload_response(row), storage_path
 
     # ── 获取最新版本材料 ──────────────────────────────────────
 
@@ -119,7 +127,7 @@ class MaterialService:
                 .eq("project_id", project_id)
                 .eq("material_type", material_type)
                 .eq("is_latest", True)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
         except Exception as exc:
@@ -128,7 +136,9 @@ class MaterialService:
                 status_code=500, detail=f"查询材料失败: {exc}"
             ) from exc
 
-        return result.data if result.data else None
+        if result and result.data:
+            return result.data[0]
+        return None
 
     # ── 获取材料历史版本列表 ──────────────────────────────────
 

@@ -173,13 +173,13 @@ export default function MaterialCenter() {
             <Col xs={24} sm={12} key={config.key}>
               <Card
                 title={
-                  <Space>
+                  <Space style={{ width: '100%', flexWrap: 'nowrap' }}>
                     {config.icon}
-                    <span>{config.label}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{config.label}</span>
                     {mat ? (
-                      <Tag icon={<CheckCircleOutlined />} color="success">已上传</Tag>
+                      <Tag icon={<CheckCircleOutlined />} color="success" style={{ flexShrink: 0 }}>已上传</Tag>
                     ) : (
-                      <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
+                      <Tag icon={<CloseCircleOutlined />} color="default" style={{ flexShrink: 0 }}>未上传</Tag>
                     )}
                   </Space>
                 }

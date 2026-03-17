@@ -130,16 +130,16 @@ class ProjectService:
                 self._sb.table("projects")
                 .select("*")
                 .eq("id", project_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
         except Exception as exc:
             logger.exception("查询项目失败")
             raise HTTPException(status_code=500, detail=f"查询项目失败: {exc}") from exc
 
-        if not result.data:
+        if not result or not result.data:
             raise HTTPException(status_code=404, detail="项目不存在")
-        return result.data
+        return result.data[0]
 
     async def _get_materials_status(self, project_id: str) -> dict[str, bool]:
         """查询项目的材料上传状态。"""

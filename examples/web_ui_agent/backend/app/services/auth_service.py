@@ -99,15 +99,15 @@ class AuthService:
         # 查询 display_name
         display_name = None
         try:
-            profile = (
+            result = (
                 self._sb.table("profiles")
                 .select("display_name")
                 .eq("id", user.id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            if profile.data:
-                display_name = profile.data.get("display_name")
+            if result and result.data:
+                display_name = result.data[0].get("display_name")
         except Exception:
             logger.warning("查询 profile 失败，display_name 将为空")
 
@@ -141,15 +141,15 @@ class AuthService:
         # 查询 display_name
         display_name = None
         try:
-            profile = (
+            result = (
                 self._sb.table("profiles")
                 .select("display_name")
                 .eq("id", user.id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            if profile.data:
-                display_name = profile.data.get("display_name")
+            if result and result.data:
+                display_name = result.data[0].get("display_name")
         except Exception:
             logger.warning("查询 profile 失败，display_name 将为空")
 
