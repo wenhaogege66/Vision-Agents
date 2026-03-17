@@ -25,6 +25,11 @@ export default function Register() {
       msg.success('注册成功');
       navigate('/', { replace: true });
     } catch (err: unknown) {
+      if ((err as { emailConfirmationRequired?: boolean })?.emailConfirmationRequired) {
+        msg.success('注册成功！请前往邮箱点击确认链接后再登录');
+        navigate('/login', { replace: true });
+        return;
+      }
       const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? '注册失败，请稍后重试';

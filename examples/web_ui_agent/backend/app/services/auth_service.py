@@ -48,6 +48,18 @@ class AuthService:
         if res.session:
             access_token = res.session.access_token
 
+        # 如果 Supabase 开启了邮箱验证，session 为 None，需要提示用户去验证
+        if not access_token:
+            return {
+                "access_token": "",
+                "user": {
+                    "id": user.id,
+                    "email": user.email or email,
+                    "display_name": display_name,
+                },
+                "email_confirmation_required": True,
+            }
+
         return {
             "access_token": access_token,
             "user": {
@@ -71,6 +83,12 @@ class AuthService:
             )
         except Exception as exc:
             logger.exception("Supabase Auth sign_in failed")
+            err_msg = str(exc).lower()
+            if "email not confirmed" in err_msg:
+                raise HTTPException(
+                    status_code=403,
+                    detail="邮箱尚未验证，请检查收件箱并点击确认链接",
+                ) from exc
             raise HTTPException(status_code=401, detail="邮箱或密码错误") from exc
 
         user = res.user

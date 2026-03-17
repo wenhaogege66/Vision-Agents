@@ -48,6 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(async (data: RegisterRequest) => {
     const res = await authApi.register(data);
+    // 如果需要邮箱验证，不存储空 token
+    if (!res.data.access_token) {
+      throw { emailConfirmationRequired: true };
+    }
     localStorage.setItem('access_token', res.data.access_token);
     setUser(res.data.user);
   }, []);
