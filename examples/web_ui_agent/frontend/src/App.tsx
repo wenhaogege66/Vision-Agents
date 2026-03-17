@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, theme } from 'antd';
+import { App as AntdApp, ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { setMessageInstance } from '@/utils/messageHolder';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppLayout from '@/components/AppLayout';
 import Login from '@/pages/Login';
@@ -31,7 +32,20 @@ export default function App() {
         },
       }}
     >
-      <BrowserRouter>
+      <AntdApp>
+        <AppInner />
+      </AntdApp>
+    </ConfigProvider>
+  );
+}
+
+/** 在 AntdApp 内部获取 context 版 message 并注入全局 holder */
+function AppInner() {
+  const { message: contextMessage } = AntdApp.useApp();
+  setMessageInstance(contextMessage);
+
+  return (
+    <BrowserRouter>
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -60,6 +74,5 @@ export default function App() {
           </Routes>
         </AuthProvider>
       </BrowserRouter>
-    </ConfigProvider>
   );
 }

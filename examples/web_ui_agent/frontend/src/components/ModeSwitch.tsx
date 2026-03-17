@@ -9,7 +9,7 @@ interface Props {
 
 export default function ModeSwitch({ value, onChange, disabled }: Props) {
   return (
-    <Space direction="vertical" align="center">
+    <Space orientation="vertical" align="center">
       <Tag color={value === 'question' ? 'blue' : 'green'} style={{ fontSize: 14, padding: '4px 12px' }}>
         当前模式：{value === 'question' ? '提问模式' : '建议模式'}
       </Tag>

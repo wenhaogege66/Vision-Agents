@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, message, Space, Typography, Divider, Row, Col } from 'antd';
+import { Button, Card, Space, Typography, Divider, Row, Col } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import { PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
 import ModeSwitch from '@/components/ModeSwitch';
 import VoiceSelector from '@/components/VoiceSelector';
@@ -27,9 +28,12 @@ export default function LivePresentation() {
     try {
       const res = await liveApi.start(projectId, { mode, style, voice, voice_type: voiceType });
       setSessionId(res.data.session_id);
-      message.success('路演会话已创建');
-    } catch (err: any) {
-      message.error(err.response?.data?.message ?? '创建路演会话失败');
+      msg.success('路演会话已创建');
+    } catch (err: unknown) {
+      const errMsg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? '创建路演会话失败';
+      msg.error(errMsg);
     } finally {
       setStarting(false);
     }
@@ -42,7 +46,7 @@ export default function LivePresentation() {
       await liveApi.switchMode(projectId, { session_id: sessionId, mode: newMode });
       setMode(newMode);
     } catch {
-      message.error('模式切换失败');
+      msg.error('模式切换失败');
     } finally {
       setSwitching(false);
     }
@@ -53,10 +57,10 @@ export default function LivePresentation() {
     setEnding(true);
     try {
       await liveApi.end(projectId, sessionId);
-      message.success('路演已结束，评审总结已生成');
+      msg.success('路演已结束，评审总结已生成');
       setSessionId(null);
     } catch {
-      message.error('结束路演失败');
+      msg.error('结束路演失败');
     } finally {
       setEnding(false);
     }
@@ -73,7 +77,7 @@ export default function LivePresentation() {
         <Row gutter={[16, 16]}>
           <Col xs={24} md={16}>
             <Card title="路演设置">
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
                 <div>
                   <Text strong style={{ display: 'block', marginBottom: 8 }}>评委风格</Text>
                   <JudgeStyleSelector value={style} onChange={setStyle} />
@@ -110,7 +114,7 @@ export default function LivePresentation() {
         </Row>
       ) : (
         <Card title="路演进行中">
-          <Space direction="vertical" size="large" style={{ width: '100%' }} align="center">
+          <Space orientation="vertical" size="large" style={{ width: '100%' }} align="center">
             <div
               style={{
                 width: '100%',

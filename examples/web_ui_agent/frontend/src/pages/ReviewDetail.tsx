@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Spin, Typography, message } from 'antd';
+import { Button, Spin, Typography } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import { DownloadOutlined } from '@ant-design/icons';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import { reviewApi } from '@/services/api';
@@ -20,7 +21,7 @@ export default function ReviewDetail() {
       setResult(res.data);
       setLoading(false);
     }).catch(() => {
-      message.error('获取评审详情失败');
+      msg.error('获取评审详情失败');
       setLoading(false);
     });
   }, [projectId, reviewId]);
@@ -37,7 +38,7 @@ export default function ReviewDetail() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch {
-      message.error('导出失败');
+      msg.error('导出失败');
     } finally {
       setExporting(false);
     }

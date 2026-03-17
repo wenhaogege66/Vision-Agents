@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, message, Spin, Typography, Space, Select, Progress } from 'antd';
+import { Button, Card, Spin, Typography, Space, Select, Progress } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import { CloudUploadOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
@@ -28,9 +29,12 @@ export default function OfflineReview() {
     try {
       const res = await reviewApi.offlineReview(projectId, stage, judgeStyle);
       setResult(res.data);
-      message.success('离线路演评审完成');
-    } catch (err: any) {
-      message.error(err.response?.data?.message ?? '评审失败，请确保已上传路演PPT和路演视频');
+      msg.success('离线路演评审完成');
+    } catch (err: unknown) {
+      const errMsg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? '评审失败，请确保已上传路演PPT和路演视频';
+      msg.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -44,7 +48,7 @@ export default function OfflineReview() {
       </Text>
 
       <Card title="评审设置" style={{ marginBottom: 24 }}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>比赛阶段</Text>
             <Select

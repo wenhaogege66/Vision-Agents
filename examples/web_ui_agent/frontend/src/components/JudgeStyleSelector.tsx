@@ -25,7 +25,7 @@ export default function JudgeStyleSelector({ value = 'strict', onChange }: Props
 
   return (
     <Radio.Group value={value} onChange={(e) => onChange?.(e.target.value)}>
-      <Space direction="vertical">
+      <Space orientation="vertical">
         {styles.map((s) => (
           <Radio key={s.id} value={s.id}>
             <Text strong>{s.name}</Text>

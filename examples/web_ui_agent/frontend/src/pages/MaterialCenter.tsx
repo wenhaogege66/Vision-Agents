@@ -6,7 +6,6 @@ import {
   Button,
   Table,
   Tag,
-  message,
   Space,
   Typography,
   Modal,
@@ -14,6 +13,7 @@ import {
   Row,
   Col,
 } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import {
   UploadOutlined,
   FileWordOutlined,
@@ -97,7 +97,7 @@ export default function MaterialCenter() {
       }
       setMaterials(map);
     } catch {
-      message.error('获取材料列表失败');
+      msg.error('获取材料列表失败');
     } finally {
       setLoading(false);
     }
@@ -122,17 +122,17 @@ export default function MaterialCenter() {
   const handleUpload = async (file: File, config: MaterialConfig) => {
     const error = validateFile(file, config);
     if (error) {
-      message.error(error);
+      msg.error(error);
       return false;
     }
     if (!projectId) return false;
     setUploading(config.key);
     try {
       await materialApi.upload(projectId, config.key, file);
-      message.success(`${config.label} 上传成功`);
+      msg.success(`${config.label} 上传成功`);
       await fetchMaterials();
     } catch {
-      message.error(`${config.label} 上传失败`);
+      msg.error(`${config.label} 上传失败`);
     } finally {
       setUploading(null);
     }
@@ -145,7 +145,7 @@ export default function MaterialCenter() {
       const res = await materialApi.versions(projectId, type);
       setVersionModal({ open: true, type, versions: res.data });
     } catch {
-      message.error('获取版本历史失败');
+      msg.error('获取版本历史失败');
     }
   };
 

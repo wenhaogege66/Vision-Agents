@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Typography, message, Space } from 'antd';
+import { Form, Input, Button, Typography, Space } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import {
   MailOutlined,
   LockOutlined,
@@ -21,13 +22,13 @@ export default function Register() {
     setLoading(true);
     try {
       await register(values);
-      message.success('注册成功');
+      msg.success('注册成功');
       navigate('/', { replace: true });
     } catch (err: unknown) {
-      const msg =
+      const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? '注册失败，请稍后重试';
-      message.error(msg);
+      msg.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,7 @@ export default function Register() {
           <Paragraph style={styles.brandDesc}>
             注册账户后，您可以创建参赛项目、上传材料并获取AI评委的专业评审反馈。
           </Paragraph>
-          <Space direction="vertical" size={4} style={{ marginTop: 32 }}>
+          <Space orientation="vertical" size={4} style={{ marginTop: 32 }}>
             <Text style={styles.featureItem}>✦ 支持国创赛 / 大挑 / 小挑</Text>
             <Text style={styles.featureItem}>✦ 校赛到国赛全流程覆盖</Text>
             <Text style={styles.featureItem}>✦ 评审历史记录与对比</Text>

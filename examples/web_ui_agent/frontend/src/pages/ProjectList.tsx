@@ -10,8 +10,8 @@ import {
   Empty,
   Row,
   Col,
-  message,
 } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import {
   PlusOutlined,
   TrophyOutlined,
@@ -43,7 +43,7 @@ export default function ProjectList() {
     projectApi
       .list()
       .then((res) => setProjects(res.data))
-      .catch(() => message.error('加载项目列表失败'))
+      .catch(() => msg.error('加载项目列表失败'))
       .finally(() => setLoading(false));
   }, []);
 

@@ -40,7 +40,7 @@ start_dev() {
   BACKEND_PID=$!
 
   # 启动前端
-  info "启动前端 (Vite on :5173)..."
+  info "启动前端 (Vite on :3000)..."
   cd "$ROOT_DIR/frontend"
   if ! command -v npm &> /dev/null; then
     error "未安装 npm，请先安装 Node.js"
@@ -50,7 +50,7 @@ start_dev() {
   FRONTEND_PID=$!
 
   info "=== 启动完成 ==="
-  info "前端: http://localhost:5173"
+  info "前端: http://localhost:3000"
   info "后端: http://localhost:8000"
   info "API文档: http://localhost:8000/docs"
   echo ""

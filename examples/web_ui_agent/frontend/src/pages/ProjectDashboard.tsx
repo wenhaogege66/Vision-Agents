@@ -10,8 +10,8 @@ import {
   Spin,
   Steps,
   Button,
-  message,
 } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import {
   ArrowLeftOutlined,
   TrophyOutlined,
@@ -45,7 +45,7 @@ interface ActionCard {
 }
 
 export default function ProjectDashboard() {
-  const { id } = useParams<{ id: string }>();
+  const { projectId: id } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<ProjectResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ export default function ProjectDashboard() {
       .get(id)
       .then((res) => setProject(res.data))
       .catch(() => {
-        message.error('项目不存在');
+        msg.error('项目不存在');
         navigate('/projects');
       })
       .finally(() => setLoading(false));

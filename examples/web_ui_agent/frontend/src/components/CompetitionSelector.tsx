@@ -119,7 +119,7 @@ export default function CompetitionSelector({
 
   return (
     <Space
-      direction={isHorizontal ? 'horizontal' : 'vertical'}
+      orientation={isHorizontal ? 'horizontal' : 'vertical'}
       size={isHorizontal ? 16 : 12}
       style={{ width: isHorizontal ? undefined : '100%' }}
     >

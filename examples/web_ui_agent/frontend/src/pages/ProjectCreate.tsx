@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, message, Space } from 'antd';
+import { Card, Form, Input, Button, Typography, Space } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import { ArrowLeftOutlined, ProjectOutlined } from '@ant-design/icons';
 import CompetitionSelector, {
   type CompetitionSelection,
@@ -17,7 +18,7 @@ export default function ProjectCreate() {
 
   const onFinish = async (values: { name: string }) => {
     if (!selection) {
-      message.warning('请完成赛事、赛道和组别的选择');
+      msg.warning('请完成赛事、赛道和组别的选择');
       return;
     }
     setLoading(true);
@@ -26,13 +27,13 @@ export default function ProjectCreate() {
         name: values.name,
         ...selection,
       });
-      message.success('项目创建成功');
+      msg.success('项目创建成功');
       navigate(`/projects/${res.data.id}`);
     } catch (err: unknown) {
-      const msg =
+      const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? '创建失败，请稍后重试';
-      message.error(msg);
+      msg.error(errMsg);
     } finally {
       setLoading(false);
     }

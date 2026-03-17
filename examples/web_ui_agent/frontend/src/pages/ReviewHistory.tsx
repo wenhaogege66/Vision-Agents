@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Tag, Typography, Spin, message } from 'antd';
+import { Table, Tag, Typography, Spin } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import { reviewApi } from '@/services/api';
 import type { ReviewResult } from '@/types';
 
@@ -24,7 +25,7 @@ export default function ReviewHistory() {
       setReviews(res.data);
       setLoading(false);
     }).catch(() => {
-      message.error('获取评审记录失败');
+      msg.error('获取评审记录失败');
       setLoading(false);
     });
   }, [projectId]);

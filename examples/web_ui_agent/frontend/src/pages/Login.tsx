@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Form, Input, Button, Typography, message, Space } from 'antd';
+import { Form, Input, Button, Typography, Space } from 'antd';
+import { msg } from '@/utils/messageHolder';
 import {
   MailOutlined,
   LockOutlined,
@@ -24,13 +25,13 @@ export default function Login() {
     setLoading(true);
     try {
       await login(values);
-      message.success('登录成功');
+      msg.success('登录成功');
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      const msg =
+      const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? '登录失败，请检查邮箱和密码';
-      message.error(msg);
+      msg.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,7 @@ export default function Login() {
           <Paragraph style={styles.brandDesc}>
             基于多模态AI的智能评审平台，为参赛团队提供专业的文本评审、路演模拟与评分反馈服务。
           </Paragraph>
-          <Space direction="vertical" size={4} style={{ marginTop: 32 }}>
+          <Space orientation="vertical" size={4} style={{ marginTop: 32 }}>
             <Text style={styles.featureItem}>✦ 多维度智能评分</Text>
             <Text style={styles.featureItem}>✦ 实时路演AI评委</Text>
             <Text style={styles.featureItem}>✦ 多种评委风格可选</Text>
