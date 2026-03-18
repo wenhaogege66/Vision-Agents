@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import {
   Card,
   Upload,
@@ -16,6 +17,7 @@ import {
 import { msg } from '@/utils/messageHolder';
 import {
   UploadOutlined,
+  DownloadOutlined,
   FileWordOutlined,
   FilePptOutlined,
   VideoCameraOutlined,
@@ -83,6 +85,7 @@ export default function MaterialCenter() {
     type: null,
     versions: [],
   });
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const fetchMaterials = useCallback(async () => {
     if (!projectId) return;
@@ -149,12 +152,29 @@ export default function MaterialCenter() {
     }
   };
 
+  const handleDownload = async (material: MaterialUploadResponse) => {
+    if (!projectId) return;
+    setDownloading(material.id);
+    try {
+      const { download_url } = await materialApi.download(projectId, material.id);
+      window.open(download_url, '_blank');
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        msg.error('文件不可用');
+      }
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   if (loading) {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   }
 
   return (
     <div style={{ padding: 24 }}>
+      <BackButton to={`/projects/${projectId}`} label="返回项目仪表盘" />
       <Title level={3}>材料中心</Title>
       <Text type="secondary" style={{ marginBottom: 24, display: 'block' }}>
         管理项目的四大核心材料。文本PPT和路演PPT为必需材料。
@@ -240,6 +260,21 @@ export default function MaterialCenter() {
               dataIndex: 'created_at',
               width: 180,
               render: (t: string) => new Date(t).toLocaleString(),
+            },
+            {
+              title: '操作',
+              width: 100,
+              render: (_: unknown, record: MaterialUploadResponse) => (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  loading={downloading === record.id}
+                  onClick={() => handleDownload(record)}
+                >
+                  下载
+                </Button>
+              ),
             },
           ]}
         />

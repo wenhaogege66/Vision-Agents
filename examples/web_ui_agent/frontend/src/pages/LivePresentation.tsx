@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { Button, Card, Space, Typography, Divider, Row, Col } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, ShareAltOutlined, StopOutlined } from '@ant-design/icons';
 import ModeSwitch from '@/components/ModeSwitch';
 import VoiceSelector from '@/components/VoiceSelector';
 import VoiceClonePanel from '@/components/VoiceClonePanel';
@@ -21,6 +22,7 @@ export default function LivePresentation() {
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const handleStart = async () => {
     if (!projectId) return;
@@ -66,8 +68,23 @@ export default function LivePresentation() {
     }
   };
 
+  const handleShare = async () => {
+    if (!projectId || !sessionId) return;
+    setSharing(true);
+    try {
+      const res = await liveApi.share(projectId, sessionId);
+      await navigator.clipboard.writeText(res.data.share_url);
+      msg.success('分享链接已复制到剪贴板');
+    } catch {
+      msg.error('生成分享链接失败');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   return (
     <div style={{ padding: 24 }}>
+      <BackButton to={`/projects/${projectId}`} label="返回项目仪表盘" />
       <Title level={3}>现场路演</Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         通过实时音视频与AI评委进行路演互动，模拟真实答辩场景。
@@ -131,6 +148,13 @@ export default function LivePresentation() {
               </Text>
             </div>
             <ModeSwitch value={mode} onChange={handleModeSwitch} disabled={switching} />
+            <Button
+              icon={<ShareAltOutlined />}
+              onClick={handleShare}
+              loading={sharing}
+            >
+              生成分享链接
+            </Button>
             <Button
               danger
               size="large"

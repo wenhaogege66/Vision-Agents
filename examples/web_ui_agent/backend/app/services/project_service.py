@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from supabase import Client
 
-from app.models.schemas import ProjectCreate, ProjectResponse
+from app.models.schemas import ProjectCreate, ProjectResponse, StageConfigResponse
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,34 @@ class ProjectService:
         updated_row = result.data[0]
         materials_status = await self._get_materials_status(project_id)
         return self._to_response(updated_row, materials_status)
+
+    # ── 阶段日期查询 ──────────────────────────────────────────
+
+    async def get_stage_dates(
+        self, competition: str, track: str
+    ) -> list[StageConfigResponse]:
+        """查询赛事各阶段日期配置。"""
+        try:
+            result = (
+                self._sb.table("stage_configs")
+                .select("stage, stage_date")
+                .eq("competition", competition)
+                .eq("track", track)
+                .execute()
+            )
+        except Exception as exc:
+            logger.exception("查询阶段日期失败")
+            raise HTTPException(
+                status_code=500, detail=f"查询阶段日期失败: {exc}"
+            ) from exc
+
+        return [
+            StageConfigResponse(
+                stage=row["stage"],
+                stage_date=row["stage_date"],
+            )
+            for row in result.data
+        ]
 
     # ── 内部辅助方法 ──────────────────────────────────────────
 

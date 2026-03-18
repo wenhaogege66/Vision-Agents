@@ -54,6 +54,7 @@ async def create_text_review(
         user_id=user.id,
         stage=body.stage,
         judge_style=body.judge_style,
+        material_types=body.material_types,
     )
 
 

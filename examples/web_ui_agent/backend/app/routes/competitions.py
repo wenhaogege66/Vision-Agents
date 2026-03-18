@@ -6,11 +6,20 @@ from app.models.schemas import (
     CompetitionInfo,
     EvaluationRules,
     GroupInfo,
+    NameMappingsResponse,
     TrackInfo,
 )
-from app.services.rule_service import rule_service
+from app.services.rule_service import (
+    COMPETITION_NAMES,
+    GROUP_NAMES,
+    TRACK_NAMES,
+    rule_service,
+)
 
 router = APIRouter(prefix="/api/competitions", tags=["competitions"])
+
+# 独立路由：名称映射 API（不使用 /api/competitions 前缀）
+name_mappings_router = APIRouter(prefix="/api", tags=["name-mappings"])
 
 
 @router.get("", response_model=list[CompetitionInfo])
@@ -53,3 +62,16 @@ async def get_rules(competition: str, track: str, group: str):
             status_code=404,
             detail=str(e),
         ) from e
+
+
+# ── 名称映射 API ──────────────────────────────────────────────
+
+
+@name_mappings_router.get("/name-mappings", response_model=NameMappingsResponse)
+async def get_name_mappings():
+    """获取赛事/赛道/组别名称映射（批量）"""
+    return NameMappingsResponse(
+        competitions=COMPETITION_NAMES,
+        tracks=TRACK_NAMES,
+        groups=GROUP_NAMES,
+    )

@@ -7,6 +7,7 @@
 
 import json
 import logging
+import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -81,6 +82,9 @@ class LiveSession:
 
 # 活跃会话存储（内存字典）
 _active_sessions: dict[str, LiveSession] = {}
+
+# 分享令牌 → session_id 映射（内存字典）
+_share_tokens: dict[str, dict] = {}
 
 
 class LivePresentationService:
@@ -363,6 +367,42 @@ class LivePresentationService:
             ).total_seconds(),
         }
 
+    # ── 生成会议分享链接 ──────────────────────────────────────
+
+    async def generate_share_link(
+        self, session_id: str, base_url: str
+    ) -> dict:
+        """生成会议分享链接，包含认证 token 和 session_id。
+
+        Args:
+            session_id: 路演会话ID
+            base_url: 前端基础URL（如 https://example.com）
+
+        Returns:
+            包含 share_url 和 expires_in 的字典
+
+        Raises:
+            HTTPException(404): 会话不存在或已结束
+        """
+        session = _active_sessions.get(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="路演会话不存在或已结束",
+            )
+
+        share_token = secrets.token_urlsafe(32)
+        share_url = f"{base_url.rstrip('/')}/live/join/{share_token}"
+        expires_in = 3600
+
+        _share_tokens[share_token] = {
+            "session_id": session_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_in": expires_in,
+        }
+
+        return {"share_url": share_url, "expires_in": expires_in}
+
     # ── GetStream 视频通话 ────────────────────────────────────
 
     async def _create_getstream_call(
@@ -588,3 +628,8 @@ class LivePresentationService:
 def get_active_sessions() -> dict[str, LiveSession]:
     """获取活跃会话字典的引用（用于测试和调试）。"""
     return _active_sessions
+
+
+def get_share_tokens() -> dict[str, dict]:
+    """获取分享令牌字典的引用（用于测试和调试）。"""
+    return _share_tokens

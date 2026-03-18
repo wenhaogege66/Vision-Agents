@@ -195,3 +195,61 @@ export const STAGE_LABELS: Record<CompetitionStage, string> = {
   national_text: '国赛文本评审',
   national_presentation: '国赛路演',
 };
+
+// ── 材料就绪状态相关 ─────────────────────────────────────────
+
+export interface MaterialStatusItem {
+  uploaded: boolean;
+  image_paths_ready?: boolean;
+  ready: boolean;
+}
+
+export interface MaterialStatusResponse {
+  bp: MaterialStatusItem;
+  text_ppt: MaterialStatusItem;
+  presentation_ppt: MaterialStatusItem;
+  presentation_video: MaterialStatusItem;
+  any_text_material_ready: boolean;
+  offline_review_ready: boolean;
+  offline_review_reasons: string[];
+}
+
+// ── 名称映射相关 ─────────────────────────────────────────────
+
+export interface NameMappings {
+  competitions: Record<string, string>;
+  tracks: Record<string, string>;
+  groups: Record<string, string>;
+}
+
+// ── 项目简介相关 ─────────────────────────────────────────────
+
+export interface ProjectProfile {
+  id: string;
+  project_id: string;
+  team_intro?: string;
+  domain?: string;
+  startup_status?: string;
+  achievements?: string;
+  product_links?: string;
+  next_goals?: string;
+  is_ai_generated: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── 自定义标签相关 ────────────────────────────────────────────
+
+export interface TagInfo {
+  id: string;
+  name: string;
+  color: string;
+  created_at: string;
+}
+
+// ── 阶段日期配置相关 ──────────────────────────────────────────
+
+export interface StageConfig {
+  stage: string;
+  stage_date: string | null;
+}

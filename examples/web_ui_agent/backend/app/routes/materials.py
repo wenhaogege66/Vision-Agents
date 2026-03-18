@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from supabase import Client
 
 from app.models.database import get_supabase
-from app.models.schemas import MaterialUploadResponse, UserInfo
+from app.models.schemas import DownloadUrlResponse, MaterialStatusResponse, MaterialUploadResponse, UserInfo
 from app.routes.auth import get_current_user
 from app.services.material_service import MaterialService
 from app.services.ppt_convert_service import PPTConvertService
@@ -82,6 +82,16 @@ async def list_materials(
     return materials
 
 
+@router.get("/status", response_model=MaterialStatusResponse)
+async def get_material_status(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+    svc: MaterialService = Depends(_get_material_service),
+):
+    """获取项目各材料类型的上传和就绪状态。"""
+    return await svc.get_status(project_id)
+
+
 @router.get("/{material_type}")
 async def get_material(
     project_id: str,
@@ -105,3 +115,14 @@ async def get_material_versions(
 ):
     """获取指定类型材料的历史版本列表。"""
     return await svc.get_versions(project_id, material_type)
+
+
+@router.get("/{material_id}/download", response_model=DownloadUrlResponse)
+async def download_material(
+    project_id: str,
+    material_id: str,
+    user: UserInfo = Depends(get_current_user),
+    svc: MaterialService = Depends(_get_material_service),
+):
+    """生成材料文件的签名下载 URL。文件不存在时返回 404。"""
+    return await svc.get_download_url(project_id, material_id)

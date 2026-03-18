@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { Table, Tag, Typography, Spin } from 'antd';
 import { msg } from '@/utils/messageHolder';
 import { reviewApi } from '@/services/api';
@@ -34,6 +35,7 @@ export default function ReviewHistory() {
 
   return (
     <div style={{ padding: 24 }}>
+      <BackButton to={`/projects/${projectId}`} label="返回项目仪表盘" />
       <Title level={3}>评审历史</Title>
       <Table
         dataSource={reviews}

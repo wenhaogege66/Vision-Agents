@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Spin, Typography, Space, Select, Progress } from 'antd';
+import { Button, Card, Spin, Typography, Space, Select, Progress, Tag, List } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { CloudUploadOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
+import BackButton from '@/components/BackButton';
 import { reviewApi } from '@/services/api';
-import type { ReviewResult, CompetitionStage } from '@/types';
+import { useReadinessChecker } from '@/hooks/useReadinessChecker';
+import type { ReviewResult, CompetitionStage, MaterialStatusItem } from '@/types';
 import { STAGE_LABELS } from '@/types';
 
 const { Title, Text } = Typography;
@@ -15,12 +17,58 @@ const stageOptions = Object.entries(STAGE_LABELS)
   .filter(([k]) => k.includes('presentation'))
   .map(([value, label]) => ({ value, label }));
 
+/** Auxiliary material types for offline review (ordered by priority). */
+const AUX_MATERIAL_TYPES = ['presentation_ppt', 'text_ppt', 'bp'] as const;
+type AuxMaterialType = (typeof AUX_MATERIAL_TYPES)[number];
+
+const AUX_MATERIAL_LABELS: Record<AuxMaterialType, string> = {
+  presentation_ppt: '路演PPT',
+  text_ppt: '文本PPT',
+  bp: '商业计划书 (BP)',
+};
+
+/** Determine the display state for an auxiliary material item. */
+function getAuxMaterialState(
+  type: AuxMaterialType,
+  item: MaterialStatusItem | undefined,
+): 'ready' | 'converting' | 'not_uploaded' {
+  if (!item || !item.uploaded) return 'not_uploaded';
+  if (type === 'bp') return 'ready';
+  if (item.image_paths_ready === false) return 'converting';
+  return 'ready';
+}
+
 export default function OfflineReview() {
   const { projectId } = useParams<{ projectId: string }>();
   const [judgeStyle, setJudgeStyle] = useState('strict');
   const [stage, setStage] = useState<CompetitionStage>('school_presentation');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ReviewResult | null>(null);
+
+  const { status, loading: statusLoading } = useReadinessChecker(projectId ?? '');
+
+  // Whether the presentation video is uploaded (core requirement for offline review).
+  const videoReady = status?.presentation_video?.uploaded ?? false;
+
+  // Derive per-auxiliary-material state from the readiness status.
+  const auxMaterialStates = useMemo(() => {
+    if (!status) return null;
+    const map: Record<AuxMaterialType, 'ready' | 'converting' | 'not_uploaded'> = {
+      presentation_ppt: getAuxMaterialState('presentation_ppt', status.presentation_ppt),
+      text_ppt: getAuxMaterialState('text_ppt', status.text_ppt),
+      bp: getAuxMaterialState('bp', status.bp),
+    };
+    return map;
+  }, [status]);
+
+  // Whether any PPT is still converting (show Spin indicator).
+  const isConverting = useMemo(() => {
+    if (!auxMaterialStates) return false;
+    return (
+      auxMaterialStates.presentation_ppt === 'converting' ||
+      auxMaterialStates.text_ppt === 'converting'
+    );
+  }, [auxMaterialStates]);
 
   const handleReview = async () => {
     if (!projectId) return;
@@ -42,13 +90,56 @@ export default function OfflineReview() {
 
   return (
     <div style={{ padding: 24 }}>
+      <BackButton to={`/projects/${projectId}`} label="返回项目仪表盘" />
+
       <Title level={3}>离线路演评审</Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         基于已上传的路演视频和路演PPT进行AI评审，生成综合评审报告（演讲表现、PPT内容、综合评分、改进建议）。
       </Text>
 
+      {/* Auxiliary material status list */}
+      <Card
+        title="辅助材料状态"
+        style={{ marginBottom: 24 }}
+        extra={isConverting ? <Spin indicator={<LoadingOutlined spin />} size="small" /> : null}
+      >
+        {statusLoading ? (
+          <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
+        ) : auxMaterialStates ? (
+          <List
+            size="small"
+            dataSource={AUX_MATERIAL_TYPES.map((type) => ({
+              type,
+              label: AUX_MATERIAL_LABELS[type],
+              state: auxMaterialStates[type],
+            }))}
+            renderItem={(item) => (
+              <List.Item>
+                <Space>
+                  <Text>{item.label}</Text>
+                  {item.state === 'ready' && (
+                    <Tag icon={<CheckCircleOutlined />} color="success">已就绪</Tag>
+                  )}
+                  {item.state === 'not_uploaded' && (
+                    <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
+                  )}
+                  {item.state === 'converting' && (
+                    <Tag icon={<LoadingOutlined spin />} color="processing">转换中</Tag>
+                  )}
+                </Space>
+                {item.type === 'presentation_ppt' && item.state === 'converting' && (
+                  <Text type="warning" style={{ fontSize: 12 }}>
+                    路演PPT转换中，评审将不包含PPT辅助内容
+                  </Text>
+                )}
+              </List.Item>
+            )}
+          />
+        ) : null}
+      </Card>
+
       <Card title="评审设置" style={{ marginBottom: 24 }}>
-        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>比赛阶段</Text>
             <Select
@@ -67,10 +158,14 @@ export default function OfflineReview() {
             icon={<CloudUploadOutlined />}
             onClick={handleReview}
             loading={loading}
+            disabled={!videoReady || loading}
             size="large"
           >
             发起离线路演评审
           </Button>
+          {!statusLoading && !videoReady && (
+            <Text type="warning">请先上传路演视频</Text>
+          )}
         </Space>
       </Card>
 

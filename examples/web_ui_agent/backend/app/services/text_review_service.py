@@ -38,12 +38,16 @@ class TextReviewService:
         self._material_svc = MaterialService(supabase)
         self._project_svc = ProjectService(supabase)
 
+    # 文本评审支持的材料类型
+    VALID_MATERIAL_TYPES = {"bp", "text_ppt", "presentation_ppt"}
+
     async def review(
         self,
         project_id: str,
         user_id: str,
         stage: str,
         judge_style: str = "strict",
+        material_types: list[str] | None = None,
     ) -> ReviewResult:
         """执行文本评审完整流程。
 
@@ -52,23 +56,46 @@ class TextReviewService:
             user_id: 用户ID
             stage: 当前比赛阶段
             judge_style: 评委风格（strict/gentle/academic）
+            material_types: 指定使用的材料类型列表，为 None 时使用所有已就绪材料
 
         Returns:
             ReviewResult 评审结果
 
         Raises:
-            HTTPException(400): 文本PPT未上传
+            HTTPException(400): 无可用材料
             HTTPException(503): AI API调用失败
         """
-        # 1. 获取最新文本PPT和BP材料
-        text_ppt = await self._material_svc.get_latest(project_id, "text_ppt")
-        if not text_ppt:
+        # 1. 确定要使用的材料类型
+        if material_types is not None:
+            # 过滤无效类型
+            requested = [mt for mt in material_types if mt in self.VALID_MATERIAL_TYPES]
+            if not requested:
+                raise HTTPException(
+                    status_code=400,
+                    detail="请至少选择一种有效的评审材料（bp、text_ppt、presentation_ppt）",
+                )
+        else:
+            # 向后兼容：使用所有类型
+            requested = list(self.VALID_MATERIAL_TYPES)
+
+        # 2. 加载请求的材料
+        text_ppt = None
+        bp = None
+        presentation_ppt = None
+
+        if "text_ppt" in requested:
+            text_ppt = await self._material_svc.get_latest(project_id, "text_ppt")
+        if "bp" in requested:
+            bp = await self._material_svc.get_latest(project_id, "bp")
+        if "presentation_ppt" in requested:
+            presentation_ppt = await self._material_svc.get_latest(project_id, "presentation_ppt")
+
+        # 至少需要一种材料可用
+        if not text_ppt and not bp and not presentation_ppt:
             raise HTTPException(
                 status_code=400,
-                detail="请先上传文本PPT后再发起文本评审",
+                detail="请先上传至少一种评审材料后再发起文本评审",
             )
-
-        bp = await self._material_svc.get_latest(project_id, "bp")
 
         # 2. 获取项目信息（赛事/赛道/组别）
         project = await self._project_svc.get_project(project_id, user_id)
@@ -88,15 +115,30 @@ class TextReviewService:
         # 5. 构建材料内容描述
         material_parts: list[str] = []
         has_bp = bp is not None
+        has_text_ppt = text_ppt is not None
+        has_presentation_ppt = presentation_ppt is not None
+
         if has_bp:
             material_parts.append(f"文本BP文件: {bp['file_name']} (版本 {bp['version']})")
-        material_parts.append(
-            f"文本PPT文件: {text_ppt['file_name']} (版本 {text_ppt['version']})"
-        )
+        if has_text_ppt:
+            material_parts.append(
+                f"文本PPT文件: {text_ppt['file_name']} (版本 {text_ppt['version']})"
+            )
+        if has_presentation_ppt:
+            material_parts.append(
+                f"路演PPT文件: {presentation_ppt['file_name']} (版本 {presentation_ppt['version']})"
+            )
         material_content = "\n".join(material_parts)
 
+        missing_notes: list[str] = []
         if not has_bp:
-            material_content += "\n\n注意：用户尚未上传文本BP，本次评审仅基于文本PPT进行，建议用户补充BP以获得更全面的评审。"
+            missing_notes.append("文本BP")
+        if not has_text_ppt:
+            missing_notes.append("文本PPT")
+        if not has_presentation_ppt:
+            missing_notes.append("路演PPT")
+        if missing_notes:
+            material_content += f"\n\n注意：本次评审未包含{'/'.join(missing_notes)}，仅基于已选材料进行评审。"
 
         # 6. 组装Prompt
         assembled_prompt = prompt_service.assemble_prompt(
@@ -110,22 +152,40 @@ class TextReviewService:
         # 7. 构建多模态消息并调用AI API
         user_content: list[dict] = []
 
-        # PPT图像
-        image_paths = text_ppt.get("image_paths") or []
-        for img_path in image_paths:
-            public_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(img_path)
-            user_content.append(
-                {"type": "image_url", "image_url": {"url": public_url}}
-            )
+        # 文本PPT图像
+        if has_text_ppt:
+            image_paths = text_ppt.get("image_paths") or []
+            for img_path in image_paths:
+                public_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(img_path)
+                user_content.append(
+                    {"type": "image_url", "image_url": {"url": public_url}}
+                )
+
+        # 路演PPT图像
+        if has_presentation_ppt:
+            ppt_image_paths = presentation_ppt.get("image_paths") or []
+            for img_path in ppt_image_paths:
+                public_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(img_path)
+                user_content.append(
+                    {"type": "image_url", "image_url": {"url": public_url}}
+                )
 
         # BP文本内容（如果有）
         if has_bp:
-            bp_text = f"以下是文本BP的内容（文件: {bp['file_name']}）：\n请结合PPT图像和BP内容进行综合评审。"
+            bp_text = f"以下是文本BP的内容（文件: {bp['file_name']}）：\n请结合已提供的材料进行综合评审。"
             user_content.append({"type": "text", "text": bp_text})
-        else:
-            user_content.append(
-                {"type": "text", "text": "本次评审仅基于文本PPT，用户尚未上传BP文件。"}
-            )
+
+        # 添加评审说明
+        available = []
+        if has_text_ppt:
+            available.append("文本PPT")
+        if has_presentation_ppt:
+            available.append("路演PPT")
+        if has_bp:
+            available.append("BP")
+        user_content.append(
+            {"type": "text", "text": f"本次评审基于以下材料：{'、'.join(available)}。"}
+        )
 
         messages = [
             {"role": "system", "content": assembled_prompt},
@@ -152,9 +212,13 @@ class TextReviewService:
         overall_suggestions = self._extract_overall_suggestions(ai_response)
 
         # 9. 构建材料版本信息
-        material_versions: dict = {"text_ppt": text_ppt["version"]}
+        material_versions: dict = {}
+        if has_text_ppt:
+            material_versions["text_ppt"] = text_ppt["version"]
         if has_bp:
             material_versions["bp"] = bp["version"]
+        if has_presentation_ppt:
+            material_versions["presentation_ppt"] = presentation_ppt["version"]
 
         # 10. 存储评审记录到 reviews 表
         now = datetime.now(timezone.utc).isoformat()

@@ -51,6 +51,7 @@ class ReviewRequest(BaseModel):
 
     stage: str  # 当前比赛阶段
     judge_style: str = "strict"  # 评委风格: strict, gentle, academic
+    material_types: list[str] | None = None  # 文本评审时指定使用的材料类型列表
 
 
 class DimensionScore(BaseModel):
@@ -232,3 +233,117 @@ class ErrorResponse(BaseModel):
     error: str  # 错误类型标识
     message: str  # 用户可读的中文错误信息
     details: dict | None = None  # 可选的详细信息
+
+
+# ── 材料就绪状态相关 ──────────────────────────────────────────
+
+
+class MaterialStatusItem(BaseModel):
+    """单种材料的状态"""
+
+    uploaded: bool
+    image_paths_ready: bool | None = None  # 仅 PPT 类型有此字段
+    ready: bool
+
+
+class MaterialStatusResponse(BaseModel):
+    """材料就绪状态总览响应"""
+
+    bp: MaterialStatusItem
+    text_ppt: MaterialStatusItem
+    presentation_ppt: MaterialStatusItem
+    presentation_video: MaterialStatusItem
+    any_text_material_ready: bool
+    offline_review_ready: bool
+    offline_review_reasons: list[str]
+
+
+# ── 名称映射相关 ──────────────────────────────────────────────
+
+
+class NameMappingsResponse(BaseModel):
+    """赛事/赛道/组别名称映射批量响应"""
+
+    competitions: dict[str, str]
+    tracks: dict[str, str]
+    groups: dict[str, str]
+
+
+# ── 项目简介相关 ──────────────────────────────────────────────
+
+
+class ProjectProfile(BaseModel):
+    """AI 提取的项目简介"""
+
+    id: str
+    project_id: str
+    team_intro: str | None = None
+    domain: str | None = None
+    startup_status: str | None = None
+    achievements: str | None = None
+    product_links: str | None = None
+    next_goals: str | None = None
+    is_ai_generated: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectProfileUpdate(BaseModel):
+    """用户编辑项目简介的请求体"""
+
+    team_intro: str | None = None
+    domain: str | None = None
+    startup_status: str | None = None
+    achievements: str | None = None
+    product_links: str | None = None
+    next_goals: str | None = None
+
+
+# ── 自定义标签相关 ────────────────────────────────────────────
+
+
+class TagCreate(BaseModel):
+    """创建标签的请求体"""
+
+    name: str
+    color: str
+
+
+class TagResponse(BaseModel):
+    """标签详情响应"""
+
+    id: str
+    name: str
+    color: str
+    created_at: datetime
+
+
+# ── 材料下载相关 ──────────────────────────────────────────────
+
+
+class DownloadUrlResponse(BaseModel):
+    """材料版本下载签名 URL 响应"""
+
+    download_url: str
+    file_name: str
+    expires_in: int
+
+
+# ── 会议分享相关 ──────────────────────────────────────────────
+
+
+class ShareLinkResponse(BaseModel):
+    """会议分享链接响应"""
+
+    share_url: str
+    expires_in: int
+
+
+# ── 阶段配置相关 ──────────────────────────────────────────────
+
+
+class StageConfigResponse(BaseModel):
+    """赛事阶段日期配置响应"""
+
+    stage: str
+    stage_date: str | None  # "YYYY-MM-DD" 或 None

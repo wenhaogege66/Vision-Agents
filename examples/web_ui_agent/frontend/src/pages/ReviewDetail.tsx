@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { Button, Spin, Typography } from 'antd';
 import { msg } from '@/utils/messageHolder';
 import { DownloadOutlined } from '@ant-design/icons';
@@ -49,6 +50,7 @@ export default function ReviewDetail() {
 
   return (
     <div style={{ padding: 24 }}>
+      <BackButton to={`/projects/${projectId}/reviews`} label="返回评审历史" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={3} style={{ margin: 0 }}>评审详情</Title>
         <Button icon={<DownloadOutlined />} onClick={handleExport} loading={exporting}>

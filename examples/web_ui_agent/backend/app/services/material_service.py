@@ -163,6 +163,132 @@ class MaterialService:
 
         return result.data
 
+    # ── 材料就绪状态查询 ────────────────────────────────────────
+
+    async def get_status(self, project_id: str) -> dict:
+        """查询项目各材料类型的上传和就绪状态。
+
+        Returns:
+            匹配 MaterialStatusResponse schema 的字典
+        """
+        try:
+            result = (
+                self._sb.table("project_materials")
+                .select("material_type, image_paths")
+                .eq("project_id", project_id)
+                .eq("is_latest", True)
+                .execute()
+            )
+        except Exception as exc:
+            logger.exception("查询材料状态失败")
+            raise HTTPException(
+                status_code=500, detail=f"查询材料状态失败: {exc}"
+            ) from exc
+
+        # Build a lookup: material_type -> row
+        records: dict[str, dict] = {}
+        for row in result.data:
+            records[row["material_type"]] = row
+
+        # PPT types that require image_paths conversion
+        ppt_types = {"text_ppt", "presentation_ppt"}
+        all_types = ["bp", "text_ppt", "presentation_ppt", "presentation_video"]
+
+        status: dict[str, dict] = {}
+        for mt in all_types:
+            uploaded = mt in records
+            if mt in ppt_types:
+                image_paths = records[mt].get("image_paths") if uploaded else None
+                image_paths_ready = (
+                    bool(image_paths) if uploaded else False
+                )
+                ready = uploaded and image_paths_ready
+                status[mt] = {
+                    "uploaded": uploaded,
+                    "image_paths_ready": image_paths_ready,
+                    "ready": ready,
+                }
+            else:
+                # bp and presentation_video: ready = uploaded
+                status[mt] = {
+                    "uploaded": uploaded,
+                    "ready": uploaded,
+                }
+
+        any_text_material_ready = (
+            status["bp"]["ready"]
+            or status["text_ppt"]["ready"]
+            or status["presentation_ppt"]["ready"]
+        )
+
+        offline_review_ready = status["presentation_video"]["uploaded"]
+
+        offline_review_reasons: list[str] = []
+        if not status["presentation_video"]["uploaded"]:
+            offline_review_reasons.append("请先上传路演视频")
+
+        return {
+            **status,
+            "any_text_material_ready": any_text_material_ready,
+            "offline_review_ready": offline_review_ready,
+            "offline_review_reasons": offline_review_reasons,
+        }
+
+    # ── 材料版本下载 URL ──────────────────────────────────────────
+
+    async def get_download_url(self, project_id: str, material_id: str) -> dict:
+        """生成材料文件的签名下载 URL。
+
+        Args:
+            project_id: 项目 ID（用于安全校验）
+            material_id: 材料记录 ID
+
+        Returns:
+            匹配 DownloadUrlResponse schema 的字典
+
+        Raises:
+            HTTPException 404: 材料记录不存在或不属于该项目
+        """
+        try:
+            result = (
+                self._sb.table("project_materials")
+                .select("file_path, file_name")
+                .eq("id", material_id)
+                .eq("project_id", project_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            logger.exception("查询材料记录失败")
+            raise HTTPException(
+                status_code=500, detail=f"查询材料记录失败: {exc}"
+            ) from exc
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="文件不存在或已过期")
+
+        row = result.data[0]
+        file_path: str = row["file_path"]
+        file_name: str = row["file_name"]
+
+        try:
+            signed = self._sb.storage.from_(STORAGE_BUCKET).create_signed_url(
+                file_path, 3600
+            )
+        except Exception as exc:
+            logger.exception("生成签名下载 URL 失败")
+            raise HTTPException(
+                status_code=500, detail=f"生成下载链接失败: {exc}"
+            ) from exc
+
+        url = signed.get("signedURL") or signed.get("signedUrl", "")
+
+        return {
+            "download_url": url,
+            "file_name": file_name,
+            "expires_in": 3600,
+        }
+
     # ── 内部辅助方法 ──────────────────────────────────────────
 
     async def _next_version(self, project_id: str, material_type: str) -> int:

@@ -1,6 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { App as AntdApp, ConfigProvider, theme } from 'antd';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { App as AntdApp, ConfigProvider, theme, Card, Typography } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+
+const { Title, Text } = Typography;
 import { AuthProvider } from '@/contexts/AuthContext';
 import { setMessageInstance } from '@/utils/messageHolder';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -70,9 +72,25 @@ function AppInner() {
               <Route path="projects/:projectId/offline-review" element={<OfflineReview />} />
             </Route>
 
+            <Route path="live/join/:shareToken" element={<ShareJoinPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>
+  );
+}
+
+function ShareJoinPage() {
+  const { shareToken } = useParams<{ shareToken: string }>();
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Card style={{ maxWidth: 400, textAlign: 'center' }}>
+        <Title level={4}>加入路演会议</Title>
+        <Text>正在验证分享链接...</Text>
+        <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+          Token: {shareToken}
+        </Text>
+      </Card>
+    </div>
   );
 }

@@ -10,6 +10,9 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import ProjectTree from '@/components/ProjectTree';
+import NetworkStatusBar from '@/components/NetworkStatusBar';
+import { LabelResolverProvider } from '@/hooks/useLabelResolver';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -30,6 +33,7 @@ export default function AppLayout() {
     ?? (location.pathname.startsWith('/projects') ? '/projects' : '/');
 
   return (
+    <LabelResolverProvider>
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
         collapsible
@@ -65,6 +69,7 @@ export default function AppLayout() {
           onClick={({ key }) => navigate(key)}
           style={{ border: 'none', marginTop: 8 }}
         />
+        {!collapsed && <ProjectTree />}
       </Sider>
 
       <Layout>
@@ -103,6 +108,8 @@ export default function AppLayout() {
           </Dropdown>
         </Header>
 
+        <NetworkStatusBar />
+
         <Content
           style={{
             margin: 0,
@@ -115,5 +122,6 @@ export default function AppLayout() {
         </Content>
       </Layout>
     </Layout>
+    </LabelResolverProvider>
   );
 }
