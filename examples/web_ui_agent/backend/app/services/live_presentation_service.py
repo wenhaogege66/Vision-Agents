@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 from fastapi import HTTPException
+from getstream import Stream
 from supabase import Client
 
 from app.config import settings
@@ -29,9 +30,6 @@ logger = logging.getLogger(__name__)
 QWEN_REALTIME_WS_URL = (
     "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
 )
-
-# GetStream API 地址
-GETSTREAM_API_BASE = "https://video.stream-io-api.com/api/v2"
 
 # 有效的交互模式
 VALID_MODES = {"question", "suggestion"}
@@ -370,14 +368,14 @@ class LivePresentationService:
     async def _create_getstream_call(
         self, call_id: str, user_id: str
     ) -> dict:
-        """通过GetStream API创建视频通话会话。
+        """通过GetStream SDK创建视频通话会话。
 
         Args:
             call_id: 通话ID
             user_id: 创建者用户ID
 
         Returns:
-            GetStream API返回的通话信息
+            包含 call_id、token 等信息的字典
 
         Raises:
             HTTPException(503): GetStream API不可用
@@ -391,45 +389,40 @@ class LivePresentationService:
                 "status": "mock",
             }
 
-        headers = {
-            "Authorization": settings.getstream_api_secret,
-            "Content-Type": "application/json",
-            "stream-auth-type": "jwt",
-            "x-stream-client": "competition-judge-system",
-        }
-
-        payload = {
-            "data": {
-                "created_by_id": user_id,
-                "settings_override": {
-                    "audio": {"mic_default_on": True},
-                    "video": {"camera_default_on": True},
-                },
-            },
-        }
-
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.post(
-                    f"{GETSTREAM_API_BASE}/video/call/default/{call_id}",
-                    headers=headers,
-                    json=payload,
-                    params={"api_key": settings.getstream_api_key},
-                )
-                response.raise_for_status()
-                return response.json()
-        except (httpx.TimeoutException, httpx.ConnectError) as exc:
-            logger.error("GetStream API连接失败: %s", exc)
-            raise HTTPException(
-                status_code=503,
-                detail="视频通话服务暂时不可用，请稍后重试",
-            ) from exc
-        except httpx.HTTPStatusError as exc:
-            logger.error(
-                "GetStream API HTTP错误: %s - %s",
-                exc.response.status_code,
-                exc.response.text,
+            client = Stream(
+                api_key=settings.getstream_api_key,
+                api_secret=settings.getstream_api_secret,
             )
+
+            # 确保用户存在
+            client.upsert_users(
+                {"users": {user_id: {"id": user_id, "name": user_id}}}
+            )
+
+            # 创建视频通话
+            call = client.video.call("default", call_id)
+            response = call.get_or_create(
+                data={
+                    "created_by_id": user_id,
+                    "settings_override": {
+                        "audio": {"mic_default_on": True},
+                        "video": {"camera_default_on": True},
+                    },
+                }
+            )
+
+            # 为用户生成访问 token
+            token = client.create_token(user_id, expiration=3600)
+
+            return {
+                "call_id": call_id,
+                "call_type": "default",
+                "token": token,
+                "status": "created",
+            }
+        except Exception as exc:
+            logger.error("GetStream API调用失败: %s", exc)
             raise HTTPException(
                 status_code=503,
                 detail="创建视频通话失败，请稍后重试",

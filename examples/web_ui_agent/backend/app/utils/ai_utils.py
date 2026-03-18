@@ -64,15 +64,18 @@ async def call_ai_api(
 
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.ConnectError) as exc:
             last_error = exc
+            error_detail = str(exc)
+            if isinstance(exc, httpx.HTTPStatusError):
+                error_detail = f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
             if attempt <= MAX_RETRIES:
                 logger.warning(
                     "AI API 调用失败 (第 %d 次)，%d 秒后重试: %s",
                     attempt,
                     RETRY_INTERVAL,
-                    exc,
+                    error_detail,
                 )
                 await asyncio.sleep(RETRY_INTERVAL)
             else:
-                logger.error("AI API 调用失败，已耗尽重试次数: %s", exc)
+                logger.error("AI API 调用失败，已耗尽重试次数: %s", error_detail)
 
     raise RuntimeError(f"AI API 调用失败，已重试 {MAX_RETRIES} 次: {last_error}")

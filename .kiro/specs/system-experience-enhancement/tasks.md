@@ -1,0 +1,296 @@
+# 实施计划：AI评委系统体验增强
+
+## 概述
+
+按功能模块分组实施，基础设施先行（数据库、类型定义、通用组件），再逐步实现各业务功能。后端使用 Python FastAPI，前端使用 React + TypeScript + Ant Design。
+
+## 任务
+
+- [ ] 1. 基础设施：数据库表、Pydantic 模型与 TypeScript 类型定义
+  - [~] 1.1 创建数据库迁移脚本，新增 `project_profiles`、`project_tags`、`project_tag_associations`、`stage_configs` 四张表
+    - 在 `examples/web_ui_agent/backend/` 下创建 `migrations/` 目录，编写 SQL 迁移文件
+    - 包含建表语句、索引和外键约束
+    - _需求: 13.1, 14.1, 10.1_
+  - [ ] 1.2 在 `app/models/schemas.py` 中新增 Pydantic 模型
+    - 新增 `MaterialStatusItem`、`MaterialStatusResponse`（含 `any_text_material_ready`、`offline_review_ready`、`offline_review_reasons`）、`NameMappingsResponse`、`ProjectProfile`、`ProjectProfileUpdate`、`TagCreate`、`TagResponse`、`DownloadUrlResponse`、`ShareLinkResponse`、`StageConfigResponse`
+    - _需求: 1.1, 1.2, 7.5, 13.2, 14.1, 11.4, 12.3_
+  - [ ] 1.3 在 `frontend/src/types/index.ts` 中新增 TypeScript 类型
+    - 新增 `MaterialStatusItem`、`MaterialStatusResponse`（含 `any_text_material_ready`、`offline_review_ready`、`offline_review_reasons`）、`NameMappings`、`ProjectProfile`、`TagInfo`、`StageConfig` 接口
+    - _需求: 1.1, 7.5, 13.2, 14.1, 10.1_
+
+- [ ] 2. 材料就绪状态 API 与评审就绪检查
+  - [ ] 2.1 在 `app/services/material_service.py` 中新增 `get_status` 方法
+    - 查询 `project_materials` 表中 `is_latest=True` 的记录
+    - 计算 `any_text_material_ready`（bp/text_ppt/presentation_ppt 至少一种就绪）、`offline_review_ready`（presentation_video 已上传）及 `offline_review_reasons` 列表
+    - _需求: 1.1, 1.2, 2.1, 2.2, 3.1, 3.2_
+  - [ ] 2.2 在 `app/routes/materials.py` 中新增 `GET /api/projects/{project_id}/materials/status` 端点
+    - 调用 `MaterialService.get_status`，返回 `MaterialStatusResponse`
+    - _需求: 1.1, 1.2, 1.3_
+  - [ ]* 2.3 编写属性测试：材料状态 API 正确性
+    - **Property 1: 材料状态API正确反映上传和就绪状态**
+    - **验证: 需求 1.1, 1.2**
+    - 测试文件: `examples/web_ui_agent/backend/tests/test_material_status.py`
+    - 使用 hypothesis 生成随机材料上传组合，验证 `uploaded` 和 `image_paths_ready` 字段
+  - [ ]* 2.4 编写属性测试：文本评审就绪条件
+    - **Property 2: 文本评审就绪条件判定**
+    - **验证: 需求 2.1, 2.2, 2.3, 2.4**
+    - 测试文件: `examples/web_ui_agent/backend/tests/test_readiness.py`
+    - 验证 `any_text_material_ready` 为 true 当且仅当 bp/text_ppt/presentation_ppt 至少一种已就绪
+  - [ ]* 2.5 编写属性测试：离线评审就绪条件
+    - **Property 3: 离线路演评审就绪条件判定**
+    - **验证: 需求 3.1, 3.2, 3.3, 3.4, 3.5**
+    - 测试文件: `examples/web_ui_agent/backend/tests/test_readiness.py`
+    - 验证 `offline_review_ready` 为 true 当且仅当 `presentation_video` 已上传
+  - [ ] 2.6 在 `frontend/src/services/api.ts` 中新增 `materialApi.status` 方法
+    - 调用 `GET /api/projects/{project_id}/materials/status`
+    - _需求: 1.3_
+  - [ ] 2.7 创建 `frontend/src/hooks/useReadinessChecker.ts` Hook
+    - 页面加载时获取材料状态
+    - PPT 转换中时每 5 秒轮询，超过 5 分钟停止轮询并提示超时
+    - 组件卸载时清理定时器
+    - _需求: 1.3, 1.4, 5.1, 5.2, 5.5_
+
+- [ ] 3. 名称映射 API 与标签解析器
+  - [ ] 3.1 在 `app/routes/competitions.py` 中新增 `GET /api/name-mappings` 端点
+    - 直接返回 `rule_service.py` 中的 `COMPETITION_NAMES`、`TRACK_NAMES`、`GROUP_NAMES`
+    - _需求: 7.5_
+  - [ ] 3.2 在 `frontend/src/services/api.ts` 中新增 `competitionApi.nameMappings` 方法
+    - _需求: 7.5_
+  - [ ] 3.3 创建 `frontend/src/hooks/useLabelResolver.ts` Hook 和 `LabelResolverContext`
+    - 应用启动时获取映射并缓存到 React Context
+    - `resolve(type, id)` 函数查找映射，未找到时回退返回原始 ID
+    - _需求: 7.1, 7.2, 7.3, 7.4_
+  - [ ]* 3.4 编写属性测试：名称解析器映射与回退
+    - **Property 4: 名称解析器正确映射与回退**
+    - **验证: 需求 7.1, 7.4**
+    - 测试文件: `frontend/src/__tests__/labelResolver.test.ts`
+    - 使用 fast-check 生成随机 ID 和映射字典
+
+- [ ] 4. 检查点 — 确保基础设施测试通过
+  - 确保所有测试通过，如有问题请向用户确认。
+
+- [ ] 5. 通用组件：BackButton 与全局错误处理
+  - [ ] 5.1 创建 `frontend/src/components/BackButton.tsx` 通用返回按钮组件
+    - 接收 `to` 和 `label` 属性，渲染 `<Button type="text" icon={<ArrowLeftOutlined />}>`
+    - 与 ProjectDashboard 已有返回按钮风格一致
+    - _需求: 8.7_
+  - [ ] 5.2 增强 `frontend/src/services/api.ts` 中的 axios 响应拦截器
+    - 4xx/5xx 错误统一通过 `message.error()` 展示
+    - 存储失败请求配置，支持重试
+    - 连续 3 次重试失败后显示兜底提示
+    - _需求: 15.1, 15.4, 15.5_
+  - [ ] 5.3 创建 `frontend/src/components/NetworkStatusBar.tsx` 网络状态提示条
+    - 监听 `online`/`offline` 事件
+    - 离线时在 AppLayout 顶部显示持续性提示条，恢复在线时自动隐藏
+    - _需求: 15.2, 15.3_
+  - [ ]* 5.4 编写属性测试：全局错误拦截器
+    - **Property 10: 全局错误拦截器统一处理**
+    - **验证: 需求 15.1**
+    - 测试文件: `frontend/src/__tests__/errorHandler.test.ts`
+    - 使用 fast-check 生成随机 400-599 状态码
+
+- [ ] 6. 评审就绪前端集成：页面修改
+  - [ ] 6.1 修改 `TextReview.tsx`：集成 useReadinessChecker 和材料选择
+    - 添加 BackButton（返回项目仪表盘）
+    - 添加材料选择复选框区域，列出 bp、text_ppt、presentation_ppt 三种材料
+    - 已上传且就绪的材料默认勾选，未上传的置灰标注"未上传"，转换中的置灰标注"转换中"
+    - 至少勾选一种已就绪材料时启用"发起文本评审"按钮，否则禁用
+    - 发起评审时将选中的 `material_types` 列表传递给后端 API
+    - 显示转换进度指示器
+    - _需求: 2.1, 2.2, 2.3, 2.4, 2.5, 4.1, 4.2, 4.3, 4.4, 4.5, 5.3, 8.2_
+  - [ ] 6.2 修改 `OfflineReview.tsx`：集成 useReadinessChecker
+    - 添加 BackButton（返回项目仪表盘）
+    - 视频未上传时禁用"发起离线路演评审"按钮并显示"请先上传路演视频"
+    - 视频已上传时启用按钮
+    - 显示辅助材料状态列表（presentation_ppt、text_ppt、bp），标注各材料上传和就绪状态
+    - 路演PPT转换中时标注"路演PPT转换中，评审将不包含PPT辅助内容"
+    - 显示转换进度指示器
+    - _需求: 3.1, 3.2, 3.3, 3.4, 3.5, 5.4, 8.3_
+  - [ ] 6.3 创建 `frontend/src/components/ReviewSelectionDialog.tsx` 评审选择对话框
+    - 在项目仪表盘中当多种评审类型均可用时弹出
+    - 提供三个选项卡片：仅文本评审、仅离线路演评审、两者都评审
+    - 点击后导航至对应页面
+    - _需求: 6.4_
+  - [ ] 6.4 修改 `ProjectDashboard.tsx`：集成就绪状态与评审选择
+    - 快捷操作卡片显示就绪状态标签（"就绪"/"材料未备齐"）
+    - 未就绪卡片置灰并显示缺失材料提示
+    - 多种评审均就绪时弹出 ReviewSelectionDialog
+    - 仅一种就绪时直接导航
+    - _需求: 6.1, 6.2, 6.3, 6.4_
+  - [ ] 6.5 修改 `app/services/text_review_service.py`：支持 material_types 参数
+    - 接受 `material_types: list[str]` 参数，仅使用指定材料进行评审
+    - 未传 material_types 时默认使用所有已就绪材料（向后兼容）
+    - _需求: 2.5, 2.6, 4.6_
+
+- [ ] 7. 中文标签显示与子页面导航
+  - [ ] 7.1 修改 `ProjectList.tsx`：集成 useLabelResolver
+    - 项目卡片上的赛事、赛道、组别标签显示中文名称
+    - _需求: 7.2_
+  - [ ] 7.2 修改 `ProjectDashboard.tsx`：集成 useLabelResolver
+    - 项目头部的赛事、赛道、组别标签显示中文名称
+    - _需求: 7.3_
+  - [ ] 7.3 为剩余子页面添加 BackButton
+    - `MaterialCenter.tsx`：返回项目仪表盘
+    - `ReviewHistory.tsx`：返回项目仪表盘
+    - `ReviewDetail.tsx`：返回评审历史
+    - `LivePresentation.tsx`：返回项目仪表盘
+    - _需求: 8.1, 8.4, 8.5, 8.6_
+
+- [ ] 8. 侧边栏项目树
+  - [ ] 8.1 创建 `frontend/src/components/ProjectTree.tsx` 组件
+    - 使用 Ant Design `Tree` 组件
+    - 按 competition → track → group 分组，节点名称通过 useLabelResolver 解析
+    - 点击叶子节点导航至项目仪表盘
+    - 无项目的空节点不显示
+    - _需求: 9.1, 9.2, 9.3, 9.6_
+  - [ ] 8.2 修改 `AppLayout.tsx`：集成 ProjectTree 和 NetworkStatusBar
+    - 在"我的项目"菜单下展示 ProjectTree
+    - 侧边栏折叠时隐藏项目树
+    - 在 Header 下方集成 NetworkStatusBar
+    - _需求: 9.1, 9.5, 15.2_
+  - [ ]* 8.3 编写属性测试：项目树分组正确性
+    - **Property 5: 项目树按层级正确分组且无空节点**
+    - **验证: 需求 9.2, 9.6**
+    - 测试文件: `frontend/src/__tests__/projectTree.test.ts`
+    - 使用 fast-check 生成随机项目列表
+
+- [ ] 9. 检查点 — 确保前端核心功能测试通过
+  - 确保所有测试通过，如有问题请向用户确认。
+
+- [ ] 10. 进度时间线日期显示
+  - [ ] 10.1 在 `app/routes/projects.py` 中新增阶段日期查询端点或扩展现有端点
+    - 查询 `stage_configs` 表，返回项目所属赛事各阶段日期
+    - _需求: 10.4_
+  - [ ] 10.2 修改 `ProjectDashboard.tsx` 中的 Steps 组件
+    - 在每个阶段节点下方显示日期（"YYYY-MM-DD" 格式）或"待定"
+    - _需求: 10.1, 10.2, 10.3_
+  - [ ]* 10.3 编写属性测试：阶段日期格式化
+    - **Property 6: 阶段日期格式化**
+    - **验证: 需求 10.2**
+    - 测试文件: `frontend/src/__tests__/dateFormat.test.ts`
+    - 使用 fast-check 生成随机日期
+
+- [ ] 11. 会议分享链接（优先级较低，需先集成 GetStream React Video SDK）
+  - [ ] 11.1 在 `app/services/live_presentation_service.py` 中新增 `generate_share_link` 方法
+    - 生成包含 session_id 和认证 token 的 URL
+    - 通过 GetStream SDK 的 `create_token` 生成临时访问令牌
+    - _需求: 11.4_
+  - [ ] 11.2 在 `app/routes/live_presentation.py` 中新增分享链接端点
+    - `POST /api/projects/{project_id}/live/{session_id}/share`：生成分享链接
+    - `GET /api/live/join/{share_token}`：验证并加入会议
+    - 会议已结束时返回 410 状态码
+    - _需求: 11.2, 11.3, 11.4, 11.5_
+  - [ ]* 11.3 编写属性测试：会议分享链接参数
+    - **Property 7: 会议分享链接包含必要参数**
+    - **验证: 需求 11.4**
+    - 测试文件: `examples/web_ui_agent/backend/tests/test_share_link.py`
+  - [ ] 11.4 修改 `LivePresentation.tsx`：添加分享链接按钮
+    - 添加 BackButton（返回项目仪表盘）
+    - 会议发起后显示"生成分享链接"按钮
+    - 点击后生成 URL 并复制到剪贴板
+    - **注意**：前端分享功能需等待 GetStream React Video SDK 集成后才能完整使用（当前视频区域为占位符）
+    - _需求: 11.1, 11.2, 11.5_
+
+- [ ] 12. 材料版本下载
+  - [ ] 12.1 在 `app/services/material_service.py` 中新增 `get_download_url` 方法
+    - 使用 Supabase Storage 的 `create_signed_url` 生成签名下载 URL
+    - _需求: 12.3_
+  - [ ] 12.2 在 `app/routes/materials.py` 中新增 `GET /api/projects/{project_id}/materials/{material_id}/download` 端点
+    - 返回 `DownloadUrlResponse`
+    - 文件不存在时返回 404
+    - _需求: 12.2, 12.3, 12.4_
+  - [ ] 12.3 修改 `MaterialCenter.tsx`：版本历史弹窗添加下载按钮
+    - 添加 BackButton（返回项目仪表盘）
+    - 每个版本记录行添加"下载"按钮
+    - 点击后获取签名 URL 并触发浏览器下载
+    - 文件不可用时显示提示
+    - _需求: 12.1, 12.2, 12.4_
+
+- [ ] 13. AI 项目简介提取
+  - [ ] 13.1 创建 `app/services/profile_service.py`
+    - 实现 `extract_profile` 方法，调用 `call_ai_api` 从 BP 和文本 PPT 内容中提取结构化字段
+    - 实现 `get_profile`、`update_profile` 方法
+    - _需求: 13.1, 13.2_
+  - [ ] 13.2 在 `app/routes/projects.py` 中新增项目简介端点
+    - `POST /api/projects/{project_id}/profile/extract`：触发 AI 提取
+    - `GET /api/projects/{project_id}/profile`：获取简介
+    - `PUT /api/projects/{project_id}/profile`：用户编辑保存
+    - _需求: 13.1, 13.4, 13.6, 13.7_
+  - [ ]* 13.3 编写属性测试：AI 简介提取结构验证
+    - **Property 8: AI简介提取结果结构验证**
+    - **验证: 需求 13.2**
+    - 测试文件: `examples/web_ui_agent/backend/tests/test_profile_service.py`
+  - [ ] 13.4 修改 `ProjectDashboard.tsx`：添加项目简介卡片
+    - 在项目头部区域展示 AI 提取的简介
+    - 支持用户编辑和保存
+    - 材料更新后提示是否重新提取
+    - _需求: 13.3, 13.4, 13.6_
+
+- [ ] 14. 自定义标签系统
+  - [ ] 14.1 创建 `app/services/tag_service.py`
+    - 实现标签 CRUD 和项目-标签关联管理
+    - _需求: 14.1, 14.5, 14.7_
+  - [ ] 14.2 创建 `app/routes/tags.py` 标签路由
+    - `POST/GET/PUT/DELETE /api/tags`：标签 CRUD
+    - `POST/DELETE /api/projects/{project_id}/tags`：项目标签关联
+    - 标签名称重复时返回 409
+    - _需求: 14.1, 14.5, 14.7_
+  - [ ] 14.3 在 `app/main.py` 中注册标签路由
+    - _需求: 14.7_
+  - [ ] 14.4 在 `frontend/src/services/api.ts` 中新增 `tagApi` 方法集
+    - _需求: 14.7_
+  - [ ] 14.5 修改 `ProjectDashboard.tsx`：添加标签管理功能
+    - "添加标签"入口，提供至少 8 种预设颜色
+    - 显示已关联标签，支持移除
+    - _需求: 14.1, 14.2, 14.3, 14.5_
+  - [ ] 14.6 修改 `ProjectList.tsx`：添加标签筛选
+    - 点击标签筛选仅显示包含该标签的项目
+    - _需求: 14.6_
+  - [ ] 14.7 修改 `ProjectTree.tsx`：项目节点旁显示标签色点
+    - _需求: 14.4_
+  - [ ]* 14.8 编写属性测试：标签筛选正确性
+    - **Property 9: 标签筛选正确性**
+    - **验证: 需求 14.6**
+    - 测试文件: `frontend/src/__tests__/tagFilter.test.ts`
+
+- [ ] 15. 检查点 — 确保所有功能模块测试通过
+  - 确保所有测试通过，如有问题请向用户确认。
+
+- [ ] 16. 项目报告导出
+  - [ ] 16.1 创建 `app/services/export_service.py`
+    - 使用 `reportlab` 或 `weasyprint` 生成 PDF
+    - 包含项目基本信息、材料状态、评审结果摘要、评分汇总
+    - 无评审记录时标注"暂无评审记录"
+    - _需求: 16.2, 16.3, 16.4_
+  - [ ] 16.2 在 `app/routes/projects.py` 中新增 `GET /api/projects/{project_id}/export` 端点
+    - 返回 `application/pdf` 二进制流
+    - _需求: 16.2_
+  - [ ]* 16.3 编写属性测试：导出报告内容完整性
+    - **Property 11: 项目报告导出内容完整性**
+    - **验证: 需求 16.2, 16.3, 16.4**
+    - 测试文件: `examples/web_ui_agent/backend/tests/test_export_service.py`
+  - [ ] 16.4 修改 `ProjectDashboard.tsx`：添加"导出项目报告"按钮
+    - 点击后调用导出 API 并触发浏览器下载 PDF
+    - _需求: 16.1_
+
+- [ ] 17. 最终集成与路由注册
+  - [ ] 17.1 在 `app/main.py` 中注册所有新增路由
+    - 确保 materials status、name-mappings、profile、tags、share、export 端点均已注册
+    - _需求: 全部_
+  - [ ] 17.2 在 `App.tsx` 中添加会议加入路由
+    - 添加 `/live/join/:shareToken` 路由
+    - _需求: 11.3_
+  - [ ] 17.3 在 `AppLayout.tsx` 中集成 `LabelResolverContext` Provider
+    - 包裹整个应用，确保所有子组件可访问标签解析器
+    - _需求: 7.1_
+
+- [ ] 18. 最终检查点 — 全量测试通过
+  - 确保所有测试通过，如有问题请向用户确认。
+
+## 备注
+
+- 标记 `*` 的子任务为可选测试任务，可跳过以加速 MVP 交付
+- 每个任务引用了具体的需求编号，确保可追溯性
+- 检查点任务确保增量验证，避免问题累积
+- 属性测试验证系统的通用正确性属性，单元测试验证具体示例和边界情况
+- 后端测试使用 `uv run pytest` 运行，前端测试使用 `npx vitest --run` 运行
