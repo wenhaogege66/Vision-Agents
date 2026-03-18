@@ -75,6 +75,16 @@ async def update_project(
         project_id, user.id, body.model_dump(exclude_unset=True)
     )
 
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+    svc: ProjectService = Depends(_get_project_service),
+):
+    """删除项目及其所有关联数据"""
+    await svc.delete_project(project_id, user.id)
+
+
 
 @router.get("/{project_id}/stage-dates", response_model=list[StageConfigResponse])
 async def get_stage_dates(
@@ -97,17 +107,14 @@ async def extract_profile(
     return await svc.extract_profile(project_id)
 
 
-@router.get("/{project_id}/profile", response_model=ProjectProfile)
+@router.get("/{project_id}/profile", response_model=ProjectProfile | None)
 async def get_profile(
     project_id: str,
     user: UserInfo = Depends(get_current_user),
     svc: ProfileService = Depends(_get_profile_service),
 ):
-    """获取项目简介"""
-    profile = await svc.get_profile(project_id)
-    if profile is None:
-        raise HTTPException(status_code=404, detail="项目简介不存在")
-    return profile
+    """获取项目简介，不存在时返回 null"""
+    return await svc.get_profile(project_id)
 
 
 @router.put("/{project_id}/profile", response_model=ProjectProfile)

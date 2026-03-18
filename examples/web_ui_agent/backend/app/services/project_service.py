@@ -121,6 +121,20 @@ class ProjectService:
         materials_status = await self._get_materials_status(project_id)
         return self._to_response(updated_row, materials_status)
 
+
+    async def delete_project(self, project_id: str, user_id: str) -> None:
+        """删除项目（级联删除关联数据）。"""
+        row = await self._fetch_project(project_id)
+        if row["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="无权删除该项目")
+
+        try:
+            self._sb.table("projects").delete().eq("id", project_id).execute()
+        except Exception as exc:
+            logger.exception("删除项目失败")
+            raise HTTPException(status_code=500, detail=f"删除项目失败: {exc}") from exc
+
+
     # ── 阶段日期查询 ──────────────────────────────────────────
 
     async def get_stage_dates(

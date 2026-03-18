@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, Checkbox, Spin, Typography, Space, Select, Tag } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { SendOutlined, LoadingOutlined } from '@ant-design/icons';
+import { SendOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import BackButton from '@/components/BackButton';
@@ -29,14 +29,10 @@ const MATERIAL_LABELS: Record<TextMaterialType, string> = {
 
 /** Determine the display state for a material item. */
 function getMaterialState(
-  type: TextMaterialType,
+  _type: TextMaterialType,
   item: MaterialStatusItem | undefined,
-): 'ready' | 'converting' | 'not_uploaded' {
+): 'ready' | 'not_uploaded' {
   if (!item || !item.uploaded) return 'not_uploaded';
-  // BP has no conversion step – uploaded means ready
-  if (type === 'bp') return 'ready';
-  // PPT types need image_paths_ready
-  if (item.image_paths_ready === false) return 'converting';
   return 'ready';
 }
 
@@ -53,19 +49,13 @@ export default function TextReview() {
   // Derive per-material state from the readiness status.
   const materialStates = useMemo(() => {
     if (!status) return null;
-    const map: Record<TextMaterialType, 'ready' | 'converting' | 'not_uploaded'> = {
+    const map: Record<TextMaterialType, 'ready' | 'not_uploaded'> = {
       bp: getMaterialState('bp', status.bp),
       text_ppt: getMaterialState('text_ppt', status.text_ppt),
       presentation_ppt: getMaterialState('presentation_ppt', status.presentation_ppt),
     };
     return map;
   }, [status]);
-
-  // Whether any PPT is still converting (show global Spin indicator).
-  const isConverting = useMemo(() => {
-    if (!materialStates) return false;
-    return materialStates.text_ppt === 'converting' || materialStates.presentation_ppt === 'converting';
-  }, [materialStates]);
 
   // Default-check all ready materials when status first loads.
   useEffect(() => {
@@ -113,12 +103,11 @@ export default function TextReview() {
       <Card
         title="评审材料选择"
         style={{ marginBottom: 24 }}
-        extra={isConverting ? <Spin indicator={<LoadingOutlined spin />} size="small" /> : null}
       >
         {statusLoading ? (
           <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
         ) : materialStates ? (
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
+          <Space orientation="vertical" size="small" style={{ width: '100%' }}>
             {TEXT_MATERIAL_TYPES.map((type) => {
               const state = materialStates[type];
               const isReady = state === 'ready';
@@ -134,11 +123,6 @@ export default function TextReview() {
                   </Checkbox>
                   {state === 'not_uploaded' && (
                     <Tag color="default">未上传</Tag>
-                  )}
-                  {state === 'converting' && (
-                    <Tag icon={<LoadingOutlined spin />} color="processing">
-                      转换中
-                    </Tag>
                   )}
                 </div>
               );

@@ -2,14 +2,13 @@
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from supabase import Client
 
 from app.models.database import get_supabase
 from app.models.schemas import DownloadUrlResponse, MaterialStatusResponse, MaterialUploadResponse, UserInfo
 from app.routes.auth import get_current_user
 from app.services.material_service import MaterialService
-from app.services.ppt_convert_service import PPTConvertService
 
 logger = logging.getLogger(__name__)
 
@@ -17,52 +16,21 @@ router = APIRouter(
     prefix="/api/projects/{project_id}/materials", tags=["materials"]
 )
 
-# PPT 类型需要自动转换为图像
-_PPT_TYPES = {"text_ppt", "presentation_ppt"}
-
 
 def _get_material_service(supabase: Client = Depends(get_supabase)) -> MaterialService:
     return MaterialService(supabase)
 
 
-def _get_ppt_convert_service(
-    supabase: Client = Depends(get_supabase),
-) -> PPTConvertService:
-    return PPTConvertService(supabase)
-
-
-async def _convert_ppt_background(
-    ppt_svc: PPTConvertService, storage_path: str, material_id: str
-) -> None:
-    """后台任务：PPT 转图像并更新数据库记录。"""
-    try:
-        image_paths = await ppt_svc.convert_to_images(storage_path)
-        await ppt_svc.update_material_image_paths(material_id, image_paths)
-        logger.info("PPT后台转换完成: %s -> %d 张图像", storage_path, len(image_paths))
-    except Exception:
-        logger.exception("PPT后台转换失败，材料已上传但图像未生成: %s", storage_path)
-
-
 @router.post("", response_model=MaterialUploadResponse)
 async def upload_material(
     project_id: str,
-    background_tasks: BackgroundTasks,
     material_type: str = Form(...),
     file: UploadFile = File(...),
     user: UserInfo = Depends(get_current_user),
     svc: MaterialService = Depends(_get_material_service),
-    ppt_svc: PPTConvertService = Depends(_get_ppt_convert_service),
 ):
-    """上传材料，PPT类型自动触发后台图像转换。"""
-    result, storage_path = await svc.upload(project_id, material_type, file)
-
-    # PPT 类型且文件扩展名为 .pptx 时异步转换（不阻塞响应）
-    filename = file.filename or ""
-    if material_type in _PPT_TYPES and filename.lower().endswith(".pptx"):
-        background_tasks.add_task(
-            _convert_ppt_background, ppt_svc, storage_path, result.id
-        )
-
+    """上传材料文件。"""
+    result, _storage_path = await svc.upload(project_id, material_type, file)
     return result
 
 

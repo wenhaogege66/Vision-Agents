@@ -10,6 +10,9 @@ class Settings(BaseSettings):
 
     # 通义千问 API
     dashscope_api_key: str = ""
+    dashscope_text_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    dashscope_multimodal_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    dashscope_model: str = "qwen-vl-max"
 
     # GetStream 配置
     getstream_api_key: str = ""

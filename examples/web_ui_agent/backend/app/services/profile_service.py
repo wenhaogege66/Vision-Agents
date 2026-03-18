@@ -14,6 +14,7 @@ from supabase import Client
 
 from app.services.material_service import MaterialService
 from app.utils.ai_utils import call_ai_api
+from app.utils.storage_utils import download_file_as_base64_data_uri
 
 logger = logging.getLogger(__name__)
 
@@ -74,23 +75,44 @@ class ProfileService:
         # 2. 构建 AI 消息
         user_content: list[dict] = []
 
-        # 文本 PPT 图像
+        # 文本 PPT 文件（直接传原始文件 base64）
         if text_ppt:
-            image_paths = text_ppt.get("image_paths") or []
-            for img_path in image_paths:
-                public_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(
-                    img_path
-                )
-                user_content.append(
-                    {"type": "image_url", "image_url": {"url": public_url}}
-                )
+            file_path = text_ppt.get("file_path")
+            if file_path:
+                try:
+                    data_uri = download_file_as_base64_data_uri(
+                        self._sb, STORAGE_BUCKET, file_path
+                    )
+                    # 根据文件类型选择合适的传入方式
+                    if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+                        user_content.append(
+                            {"type": "image_url", "image_url": {"url": data_uri}}
+                        )
+                    else:
+                        # PDF/PPTX 等文档文件也通过 image_url 传入（通义千问支持）
+                        user_content.append(
+                            {"type": "image_url", "image_url": {"url": data_uri}}
+                        )
+                except Exception:
+                    logger.warning("下载文本PPT文件失败: %s", file_path)
 
-        # BP 文本说明
+        # BP 文件（直接传原始文件 base64）
         if bp:
+            file_path = bp.get("file_path")
+            if file_path:
+                try:
+                    data_uri = download_file_as_base64_data_uri(
+                        self._sb, STORAGE_BUCKET, file_path
+                    )
+                    user_content.append(
+                        {"type": "image_url", "image_url": {"url": data_uri}}
+                    )
+                except Exception:
+                    logger.warning("下载BP文件失败: %s", file_path)
             user_content.append(
                 {
                     "type": "text",
-                    "text": f"以下是商业计划书（BP）文件: {bp['file_name']}（版本 {bp['version']}）。",
+                    "text": f"以上包含商业计划书（BP）文件: {bp['file_name']}（版本 {bp['version']}）。",
                 }
             )
 

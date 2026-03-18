@@ -19,6 +19,7 @@ from app.services.project_service import ProjectService
 from app.services.prompt_service import prompt_service
 from app.services.rule_service import rule_service
 from app.utils.ai_utils import call_ai_api
+from app.utils.storage_utils import download_file_as_base64_data_uri
 
 logger = logging.getLogger(__name__)
 
@@ -152,23 +153,33 @@ class TextReviewService:
         # 7. 构建多模态消息并调用AI API
         user_content: list[dict] = []
 
-        # 文本PPT图像
+        # 文本PPT文件（直接传原始文件 base64）
         if has_text_ppt:
-            image_paths = text_ppt.get("image_paths") or []
-            for img_path in image_paths:
-                public_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(img_path)
-                user_content.append(
-                    {"type": "image_url", "image_url": {"url": public_url}}
-                )
+            file_path = text_ppt.get("file_path")
+            if file_path:
+                try:
+                    data_uri = download_file_as_base64_data_uri(
+                        self._sb, STORAGE_BUCKET, file_path
+                    )
+                    user_content.append(
+                        {"type": "image_url", "image_url": {"url": data_uri}}
+                    )
+                except Exception:
+                    logger.warning("下载文本PPT文件失败: %s", file_path)
 
-        # 路演PPT图像
+        # 路演PPT文件（直接传原始文件 base64）
         if has_presentation_ppt:
-            ppt_image_paths = presentation_ppt.get("image_paths") or []
-            for img_path in ppt_image_paths:
-                public_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(img_path)
-                user_content.append(
-                    {"type": "image_url", "image_url": {"url": public_url}}
-                )
+            file_path = presentation_ppt.get("file_path")
+            if file_path:
+                try:
+                    data_uri = download_file_as_base64_data_uri(
+                        self._sb, STORAGE_BUCKET, file_path
+                    )
+                    user_content.append(
+                        {"type": "image_url", "image_url": {"url": data_uri}}
+                    )
+                except Exception:
+                    logger.warning("下载路演PPT文件失败: %s", file_path)
 
         # BP文本内容（如果有）
         if has_bp:

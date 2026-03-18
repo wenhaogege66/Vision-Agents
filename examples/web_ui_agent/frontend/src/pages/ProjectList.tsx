@@ -10,6 +10,7 @@ import {
   Empty,
   Row,
   Col,
+  Modal,
 } from 'antd';
 import { msg } from '@/utils/messageHolder';
 import {
@@ -18,6 +19,7 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   LogoutOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { projectApi, tagApi } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -80,6 +82,26 @@ export default function ProjectList() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleDelete = (e: React.MouseEvent, project: ProjectResponse) => {
+    e.stopPropagation();
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除项目「${project.name}」吗？删除后不可恢复。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await projectApi.delete(project.id);
+          setProjects((prev) => prev.filter((p) => p.id !== project.id));
+          msg.success('项目已删除');
+        } catch {
+          // global interceptor handles error
+        }
+      },
+    });
   };
 
   const filteredProjects = selectedTagId
@@ -224,10 +246,17 @@ export default function ProjectList() {
                   })}
                 </Space>
 
-                <div style={{ marginTop: 10 }}>
+                <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>
                     创建于 {new Date(p.created_at).toLocaleDateString('zh-CN')}
                   </Text>
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => handleDelete(e, p)}
+                  />
                 </div>
               </Card>
             </Col>

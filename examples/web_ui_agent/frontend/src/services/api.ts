@@ -175,6 +175,9 @@ export const projectApi = {
   update: (id: string, data: ProjectUpdate) =>
     api.put<ProjectResponse>(`/projects/${id}`, data),
 
+  delete: (id: string) =>
+    api.delete(`/projects/${id}`),
+
   stageDates: (projectId: string) =>
     api.get<StageConfig[]>(`/projects/${projectId}/stage-dates`).then(res => res.data),
 };
@@ -291,7 +294,7 @@ export const profileApi = {
     api.post<ProjectProfile>(`/projects/${projectId}/profile/extract`).then(res => res.data),
 
   get: (projectId: string) =>
-    api.get<ProjectProfile>(`/projects/${projectId}/profile`).then(res => res.data),
+    api.get<ProjectProfile | null>(`/projects/${projectId}/profile`).then(res => res.data),
 
   update: (projectId: string, data: Partial<ProjectProfile>) =>
     api.put<ProjectProfile>(`/projects/${projectId}/profile`, data).then(res => res.data),

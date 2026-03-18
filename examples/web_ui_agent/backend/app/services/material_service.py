@@ -174,7 +174,7 @@ class MaterialService:
         try:
             result = (
                 self._sb.table("project_materials")
-                .select("material_type, image_paths")
+                .select("material_type")
                 .eq("project_id", project_id)
                 .eq("is_latest", True)
                 .execute()
@@ -185,35 +185,13 @@ class MaterialService:
                 status_code=500, detail=f"查询材料状态失败: {exc}"
             ) from exc
 
-        # Build a lookup: material_type -> row
-        records: dict[str, dict] = {}
-        for row in result.data:
-            records[row["material_type"]] = row
-
-        # PPT types that require image_paths conversion
-        ppt_types = {"text_ppt", "presentation_ppt"}
+        uploaded_types = {row["material_type"] for row in result.data}
         all_types = ["bp", "text_ppt", "presentation_ppt", "presentation_video"]
 
         status: dict[str, dict] = {}
         for mt in all_types:
-            uploaded = mt in records
-            if mt in ppt_types:
-                image_paths = records[mt].get("image_paths") if uploaded else None
-                image_paths_ready = (
-                    bool(image_paths) if uploaded else False
-                )
-                ready = uploaded and image_paths_ready
-                status[mt] = {
-                    "uploaded": uploaded,
-                    "image_paths_ready": image_paths_ready,
-                    "ready": ready,
-                }
-            else:
-                # bp and presentation_video: ready = uploaded
-                status[mt] = {
-                    "uploaded": uploaded,
-                    "ready": uploaded,
-                }
+            uploaded = mt in uploaded_types
+            status[mt] = {"uploaded": uploaded, "ready": uploaded}
 
         any_text_material_ready = (
             status["bp"]["ready"]

@@ -10,28 +10,29 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # 默认超时（秒）
-DEFAULT_TEXT_TIMEOUT = 30
-DEFAULT_VIDEO_TIMEOUT = 60
+DEFAULT_TEXT_TIMEOUT = 60
+DEFAULT_VIDEO_TIMEOUT = 120
 
 # 重试配置
 MAX_RETRIES = 2
 RETRY_INTERVAL = 2  # 秒
 
-# DashScope 兼容 API 地址
-DASHSCOPE_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+# DashScope API 地址从配置读取，支持纯文本和多模态分开配置
 
 
 async def call_ai_api(
     messages: list[dict],
-    model: str = "qwen-vl-max",
+    model: str | None = None,
     timeout: float = DEFAULT_TEXT_TIMEOUT,
+    multimodal: bool = True,
 ) -> dict:
     """调用通义千问 API（DashScope 兼容模式），带自动重试。
 
     Args:
         messages: OpenAI 格式的消息列表
-        model: 模型名称
+        model: 模型名称，默认使用 settings.dashscope_model
         timeout: 请求超时时间（秒）
+        multimodal: 是否使用多模态 API 地址
 
     Returns:
         API 响应 JSON（dict）
@@ -40,6 +41,9 @@ async def call_ai_api(
         httpx.HTTPStatusError: 非重试范围内的 HTTP 错误
         RuntimeError: 重试耗尽后仍失败
     """
+    if model is None:
+        model = settings.dashscope_model
+    api_url = settings.dashscope_multimodal_url if multimodal else settings.dashscope_text_url
     headers = {
         "Authorization": f"Bearer {settings.dashscope_api_key}",
         "Content-Type": "application/json",
@@ -55,7 +59,7 @@ async def call_ai_api(
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
-                    DASHSCOPE_API_URL,
+                    api_url,
                     headers=headers,
                     json=payload,
                 )

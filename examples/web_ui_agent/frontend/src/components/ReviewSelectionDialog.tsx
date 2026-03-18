@@ -46,7 +46,7 @@ export default function ReviewSelectionDialog({
       onCancel={onClose}
       footer={null}
       width={640}
-      destroyOnClose
+      destroyOnHidden
     >
       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
         当前项目有多种评审类型可用，请选择您要进行的评审：

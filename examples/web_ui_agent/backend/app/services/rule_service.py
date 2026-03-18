@@ -49,6 +49,9 @@ GROUP_NAMES: dict[str, str] = {
     "gongyi": "公益组",
     "chuangyi": "创意组",
     "chuangye": "创业组",
+    "chengguo_zhuanhua": "成果转化组",
+    "qiye_mingti": "企业命题组",
+    "default": "默认组",
 }
 
 

@@ -7,11 +7,10 @@
 """
 
 import io
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import given, settings as h_settings, assume
+from hypothesis import given, settings as h_settings
 import hypothesis.strategies as st
 
 from fastapi.testclient import TestClient
@@ -20,9 +19,7 @@ from app.main import app
 from app.models.database import get_supabase
 from app.models.schemas import UserInfo
 from app.routes.auth import get_current_user
-from app.routes.materials import _PPT_TYPES
 from app.services.material_service import MaterialService
-from app.services.ppt_convert_service import PPTConvertService
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -112,16 +109,6 @@ class TestPreservation_NonPPTXUploadNoPPTConversion:
                 patch.object(
                     MaterialService, "upload", side_effect=mock_svc_upload
                 ),
-                patch.object(
-                    PPTConvertService,
-                    "convert_to_images",
-                    side_effect=AssertionError("convert_to_images should NOT be called for non-PPTX"),
-                ) as mock_convert,
-                patch.object(
-                    PPTConvertService,
-                    "update_material_image_paths",
-                    side_effect=AssertionError("update_material_image_paths should NOT be called for non-PPTX"),
-                ) as mock_update,
             ):
                 client = TestClient(app)
                 fake_content = b"fake-file-content-" + file_name.encode()
@@ -140,77 +127,6 @@ class TestPreservation_NonPPTXUploadNoPPTConversion:
                 assert data["material_type"] == material_type
                 assert data["file_name"] == file_name
                 assert data["version"] == 1
-
-                # PPT conversion must NOT have been called
-                mock_convert.assert_not_called()
-                mock_update.assert_not_called()
-        finally:
-            app.dependency_overrides.clear()
-
-
-# ── Property 2: material_type not in _PPT_TYPES → no PPT conversion ─
-
-
-# Strategy: generate material_types that are NOT in _PPT_TYPES
-_ALL_MATERIAL_TYPES = ["bp", "text_ppt", "presentation_ppt", "presentation_video"]
-_NON_PPT_MATERIAL_TYPES = [mt for mt in _ALL_MATERIAL_TYPES if mt not in _PPT_TYPES]
-
-# Valid file extensions per material type (for non-PPT types)
-_NON_PPT_TYPE_FILES = {
-    "bp": [("plan.pdf", "application/pdf"), ("plan.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")],
-    "presentation_video": [("demo.mp4", "video/mp4"), ("demo.webm", "video/webm")],
-}
-
-
-class TestPreservation_NonPPTMaterialTypeNoPPTConversion:
-    """Property 2: Preservation - material_type not in _PPT_TYPES → no PPT conversion
-
-    For any material_type that is NOT in _PPT_TYPES (i.e., not text_ppt or
-    presentation_ppt), the PPT conversion service is never invoked regardless
-    of file extension.
-
-    **Validates: Requirements 3.1, 3.2, 3.4**
-    """
-
-    @given(
-        mt_idx=st.integers(min_value=0, max_value=len(_NON_PPT_MATERIAL_TYPES) - 1),
-        data=st.data(),
-    )
-    @h_settings(max_examples=30, deadline=None)
-    def test_non_ppt_material_type_never_triggers_conversion(self, mt_idx: int, data):
-        """For material_type not in _PPT_TYPES, PPT conversion is never called."""
-        material_type = _NON_PPT_MATERIAL_TYPES[mt_idx]
-        file_options = _NON_PPT_TYPE_FILES[material_type]
-        file_idx = data.draw(st.integers(min_value=0, max_value=len(file_options) - 1))
-        file_name, content_type = file_options[file_idx]
-
-        mock_sb = _mock_supabase()
-        mock_svc_upload, _ = _setup_mocks_for_upload(mock_sb, material_type, file_name)
-
-        fake_user = UserInfo(id="user-1", email="test@test.com", display_name="Test")
-        app.dependency_overrides[get_current_user] = lambda: fake_user
-        app.dependency_overrides[get_supabase] = lambda: mock_sb
-
-        try:
-            with (
-                patch.object(MaterialService, "upload", side_effect=mock_svc_upload),
-                patch.object(
-                    PPTConvertService, "convert_to_images",
-                ) as mock_convert,
-                patch.object(
-                    PPTConvertService, "update_material_image_paths",
-                ) as mock_update,
-            ):
-                client = TestClient(app)
-                response = client.post(
-                    "/api/projects/proj-1/materials",
-                    data={"material_type": material_type},
-                    files={"file": (file_name, io.BytesIO(b"content"), content_type)},
-                )
-
-                assert response.status_code == 200
-                mock_convert.assert_not_called()
-                mock_update.assert_not_called()
         finally:
             app.dependency_overrides.clear()
 

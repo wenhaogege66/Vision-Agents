@@ -200,7 +200,6 @@ export const STAGE_LABELS: Record<CompetitionStage, string> = {
 
 export interface MaterialStatusItem {
   uploaded: boolean;
-  image_paths_ready?: boolean;
   ready: boolean;
 }
 

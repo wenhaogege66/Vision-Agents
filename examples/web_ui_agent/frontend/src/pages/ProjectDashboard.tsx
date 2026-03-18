@@ -111,13 +111,15 @@ export default function ProjectDashboard() {
     if (!id) return;
     profileApi.get(id)
       .then((data) => {
-        setProfile(data);
-        setProfileNotFound(false);
-      })
-      .catch((err) => {
-        if (err.response?.status === 404) {
+        if (data) {
+          setProfile(data);
+          setProfileNotFound(false);
+        } else {
           setProfileNotFound(true);
         }
+      })
+      .catch(() => {
+        setProfileNotFound(true);
       });
   }, [id]);
 
@@ -431,7 +433,7 @@ export default function ProjectDashboard() {
               </Popover>
             </Space>
           </div>
-          <Space direction="vertical" align="end" size={8}>
+          <Space orientation="vertical" align="end" size={8}>
             <Text type="secondary" style={{ fontSize: 13 }}>
               创建于 {new Date(project.created_at).toLocaleDateString('zh-CN')}
             </Text>
@@ -458,7 +460,7 @@ export default function ProjectDashboard() {
           size="small"
           items={STAGES.map((s) => ({
             title: STAGE_LABELS[s],
-            description: stageDates[s] ?? '待定',
+            content: stageDates[s] ?? '待定',
           }))}
           style={{ marginBottom: 8 }}
         />

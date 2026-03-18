@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, Spin, Typography, Space, Select, Progress, Tag, List } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { CloudUploadOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import BackButton from '@/components/BackButton';
@@ -29,12 +29,10 @@ const AUX_MATERIAL_LABELS: Record<AuxMaterialType, string> = {
 
 /** Determine the display state for an auxiliary material item. */
 function getAuxMaterialState(
-  type: AuxMaterialType,
+  _type: AuxMaterialType,
   item: MaterialStatusItem | undefined,
-): 'ready' | 'converting' | 'not_uploaded' {
+): 'ready' | 'not_uploaded' {
   if (!item || !item.uploaded) return 'not_uploaded';
-  if (type === 'bp') return 'ready';
-  if (item.image_paths_ready === false) return 'converting';
   return 'ready';
 }
 
@@ -53,22 +51,13 @@ export default function OfflineReview() {
   // Derive per-auxiliary-material state from the readiness status.
   const auxMaterialStates = useMemo(() => {
     if (!status) return null;
-    const map: Record<AuxMaterialType, 'ready' | 'converting' | 'not_uploaded'> = {
+    const map: Record<AuxMaterialType, 'ready' | 'not_uploaded'> = {
       presentation_ppt: getAuxMaterialState('presentation_ppt', status.presentation_ppt),
       text_ppt: getAuxMaterialState('text_ppt', status.text_ppt),
       bp: getAuxMaterialState('bp', status.bp),
     };
     return map;
   }, [status]);
-
-  // Whether any PPT is still converting (show Spin indicator).
-  const isConverting = useMemo(() => {
-    if (!auxMaterialStates) return false;
-    return (
-      auxMaterialStates.presentation_ppt === 'converting' ||
-      auxMaterialStates.text_ppt === 'converting'
-    );
-  }, [auxMaterialStates]);
 
   const handleReview = async () => {
     if (!projectId) return;
@@ -101,7 +90,6 @@ export default function OfflineReview() {
       <Card
         title="辅助材料状态"
         style={{ marginBottom: 24 }}
-        extra={isConverting ? <Spin indicator={<LoadingOutlined spin />} size="small" /> : null}
       >
         {statusLoading ? (
           <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
@@ -123,13 +111,10 @@ export default function OfflineReview() {
                   {item.state === 'not_uploaded' && (
                     <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
                   )}
-                  {item.state === 'converting' && (
-                    <Tag icon={<LoadingOutlined spin />} color="processing">转换中</Tag>
-                  )}
                 </Space>
-                {item.type === 'presentation_ppt' && item.state === 'converting' && (
+                {item.type === 'presentation_ppt' && item.state === 'not_uploaded' && (
                   <Text type="warning" style={{ fontSize: 12 }}>
-                    路演PPT转换中，评审将不包含PPT辅助内容
+                    路演PPT未上传，评审将不包含PPT辅助内容
                   </Text>
                 )}
               </List.Item>
@@ -139,7 +124,7 @@ export default function OfflineReview() {
       </Card>
 
       <Card title="评审设置" style={{ marginBottom: 24 }}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>比赛阶段</Text>
             <Select

@@ -242,7 +242,6 @@ class MaterialStatusItem(BaseModel):
     """单种材料的状态"""
 
     uploaded: bool
-    image_paths_ready: bool | None = None  # 仅 PPT 类型有此字段
     ready: bool
 
 
