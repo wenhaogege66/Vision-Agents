@@ -18,7 +18,7 @@ from app.services.material_service import MaterialService
 from app.services.project_service import ProjectService
 from app.services.prompt_service import prompt_service
 from app.services.rule_service import rule_service
-from app.utils.ai_utils import call_ai_api
+from app.utils.ai_utils import FileParsingError, call_ai_api
 from app.utils.dashscope_file import upload_file_to_dashscope
 
 logger = logging.getLogger(__name__)
@@ -151,80 +151,37 @@ class TextReviewService:
         )
 
         # 7. 下载文件并上传到 DashScope，获取 file-id
-        file_ids: list[str] = []
-        files_downloaded = 0
+        uploaded_files: list[dict] = []  # [{"file_id": ..., "label": ...}]
 
-        # 文本PPT
+        materials_to_upload = []
         if has_text_ppt:
-            file_path = text_ppt.get("file_path")
-            if file_path:
-                try:
-                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
-                    file_name = file_path.rsplit("/", 1)[-1]
-                    fid = await upload_file_to_dashscope(content, file_name)
-                    file_ids.append(fid)
-                    files_downloaded += 1
-                except Exception as exc:
-                    logger.warning("下载/上传文本PPT文件失败: %s, 错误: %s", file_path, exc)
-
-        # 路演PPT
+            materials_to_upload.append((text_ppt, "文本PPT"))
         if has_presentation_ppt:
-            file_path = presentation_ppt.get("file_path")
-            if file_path:
-                try:
-                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
-                    file_name = file_path.rsplit("/", 1)[-1]
-                    fid = await upload_file_to_dashscope(content, file_name)
-                    file_ids.append(fid)
-                    files_downloaded += 1
-                except Exception as exc:
-                    logger.warning("下载/上传路演PPT文件失败: %s, 错误: %s", file_path, exc)
-
-        # BP
+            materials_to_upload.append((presentation_ppt, "路演PPT"))
         if has_bp:
-            file_path = bp.get("file_path")
-            if file_path:
-                try:
-                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
-                    file_name = file_path.rsplit("/", 1)[-1]
-                    fid = await upload_file_to_dashscope(content, file_name)
-                    file_ids.append(fid)
-                    files_downloaded += 1
-                except Exception as exc:
-                    logger.warning("下载/上传BP文件失败: %s, 错误: %s", file_path, exc)
+            materials_to_upload.append((bp, "BP"))
 
-        if files_downloaded == 0:
+        for material, label in materials_to_upload:
+            file_path = material.get("file_path")
+            if not file_path:
+                continue
+            try:
+                content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                file_name = file_path.rsplit("/", 1)[-1]
+                fid = await upload_file_to_dashscope(content, file_name)
+                uploaded_files.append({"file_id": fid, "label": label})
+            except Exception as exc:
+                logger.warning("下载/上传%s文件失败: %s, 错误: %s", label, file_path, exc)
+
+        if not uploaded_files:
             raise HTTPException(
                 status_code=502,
                 detail="无法从存储服务下载评审材料文件，请稍后重试",
             )
 
-        # 构建 Qwen-Long 消息（通过 fileid:// 引用文档）
-        fileid_refs = ",".join(f"fileid://{fid}" for fid in file_ids)
-
-        available = []
-        if has_text_ppt:
-            available.append("文本PPT")
-        if has_presentation_ppt:
-            available.append("路演PPT")
-        if has_bp:
-            available.append("BP")
-
-        messages = [
-            {"role": "system", "content": assembled_prompt},
-            {"role": "system", "content": fileid_refs},
-            {"role": "user", "content": f"本次评审基于以下材料：{'、'.join(available)}。请按照评审规则进行评分。"},
-        ]
-
-        # 调用 Qwen-Long（文档理解模型）
-        try:
-            ai_response = await call_ai_api(messages, model="qwen-long", multimodal=False)
-        except RuntimeError as exc:
-            logger.error("文本评审AI API调用失败: %s", exc)
-            raise HTTPException(
-                status_code=503,
-                detail="AI评审服务暂时不可用，请稍后重试",
-            ) from exc
+        # 构建 Qwen-Long 消息（每个 fileid 单独一条 system message）
+        # 如果某个文件解析失败，排除后重试
+        ai_response = await self._call_with_fallback(assembled_prompt, uploaded_files)
 
         # 8. 解析AI响应
         dimensions = self._parse_ai_response(ai_response)
@@ -313,6 +270,42 @@ class TextReviewService:
             status="completed",
             created_at=created_at,
         )
+
+    # ── AI 调用（含文件解析失败容错） ──────────────────────────
+
+    async def _call_with_fallback(
+        self, system_prompt: str, uploaded_files: list[dict]
+    ) -> dict:
+        """调用 AI API，如果某个文件解析失败则排除后重试。"""
+        remaining = list(uploaded_files)
+
+        while remaining:
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            for f in remaining:
+                messages.append({"role": "system", "content": f"fileid://{f['file_id']}"})
+            labels = "、".join(f["label"] for f in remaining)
+            messages.append({"role": "user", "content": f"本次评审基于以下材料：{labels}。请按照评审规则进行评分。"})
+
+            try:
+                return await call_ai_api(messages, model="qwen-long", multimodal=False)
+            except FileParsingError as exc:
+                failed_fid = exc.file_id
+                before_count = len(remaining)
+                remaining = [f for f in remaining if failed_fid not in f["file_id"]]
+                if len(remaining) == before_count:
+                    remaining = remaining[1:]
+                if remaining:
+                    logger.warning("文件解析失败 (file-id=%s)，用剩余 %d 个文件重试", failed_fid, len(remaining))
+                else:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"所有材料文件解析失败: {exc.message[:100]}",
+                    ) from exc
+            except RuntimeError as exc:
+                logger.error("文本评审AI API调用失败: %s", exc)
+                raise HTTPException(status_code=503, detail="AI评审服务暂时不可用，请稍后重试") from exc
+
+        raise HTTPException(status_code=502, detail="无可用材料文件")
 
     # ── AI响应解析辅助方法 ────────────────────────────────────
 

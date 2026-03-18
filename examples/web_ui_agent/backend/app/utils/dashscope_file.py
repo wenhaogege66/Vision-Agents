@@ -9,6 +9,7 @@
 参考文档: https://www.alibabacloud.com/help/en/model-studio/long-context-qwen-long
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -18,6 +19,10 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _FILES_API = "https://dashscope.aliyuncs.com/compatible-mode/v1/files"
+
+# 解析等待配置
+_PARSE_CHECK_INTERVAL = 3  # 每次检查间隔（秒）
+_PARSE_MAX_WAIT = 60  # 最长等待时间（秒）
 
 
 async def upload_file_to_dashscope(
@@ -32,12 +37,15 @@ async def upload_file_to_dashscope(
 
     Returns:
         file-id 字符串，用于 fileid://{id} 引用
+
+    Raises:
+        RuntimeError: 上传失败
     """
     headers = {
         "Authorization": f"Bearer {settings.dashscope_api_key}",
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=180) as client:
         resp = await client.post(
             _FILES_API,
             headers=headers,
