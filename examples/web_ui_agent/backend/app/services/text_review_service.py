@@ -19,7 +19,7 @@ from app.services.project_service import ProjectService
 from app.services.prompt_service import prompt_service
 from app.services.rule_service import rule_service
 from app.utils.ai_utils import call_ai_api
-from app.utils.storage_utils import download_file_as_base64_data_uri
+from app.utils.dashscope_file import upload_file_to_dashscope
 
 logger = logging.getLogger(__name__)
 
@@ -150,43 +150,58 @@ class TextReviewService:
             material_content=material_content,
         )
 
-        # 7. 构建多模态消息并调用AI API
-        user_content: list[dict] = []
+        # 7. 下载文件并上传到 DashScope，获取 file-id
+        file_ids: list[str] = []
+        files_downloaded = 0
 
-        # 文本PPT文件（直接传原始文件 base64）
+        # 文本PPT
         if has_text_ppt:
             file_path = text_ppt.get("file_path")
             if file_path:
                 try:
-                    data_uri = download_file_as_base64_data_uri(
-                        self._sb, STORAGE_BUCKET, file_path
-                    )
-                    user_content.append(
-                        {"type": "image_url", "image_url": {"url": data_uri}}
-                    )
-                except Exception:
-                    logger.warning("下载文本PPT文件失败: %s", file_path)
+                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                    file_name = file_path.rsplit("/", 1)[-1]
+                    fid = await upload_file_to_dashscope(content, file_name)
+                    file_ids.append(fid)
+                    files_downloaded += 1
+                except Exception as exc:
+                    logger.warning("下载/上传文本PPT文件失败: %s, 错误: %s", file_path, exc)
 
-        # 路演PPT文件（直接传原始文件 base64）
+        # 路演PPT
         if has_presentation_ppt:
             file_path = presentation_ppt.get("file_path")
             if file_path:
                 try:
-                    data_uri = download_file_as_base64_data_uri(
-                        self._sb, STORAGE_BUCKET, file_path
-                    )
-                    user_content.append(
-                        {"type": "image_url", "image_url": {"url": data_uri}}
-                    )
-                except Exception:
-                    logger.warning("下载路演PPT文件失败: %s", file_path)
+                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                    file_name = file_path.rsplit("/", 1)[-1]
+                    fid = await upload_file_to_dashscope(content, file_name)
+                    file_ids.append(fid)
+                    files_downloaded += 1
+                except Exception as exc:
+                    logger.warning("下载/上传路演PPT文件失败: %s, 错误: %s", file_path, exc)
 
-        # BP文本内容（如果有）
+        # BP
         if has_bp:
-            bp_text = f"以下是文本BP的内容（文件: {bp['file_name']}）：\n请结合已提供的材料进行综合评审。"
-            user_content.append({"type": "text", "text": bp_text})
+            file_path = bp.get("file_path")
+            if file_path:
+                try:
+                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                    file_name = file_path.rsplit("/", 1)[-1]
+                    fid = await upload_file_to_dashscope(content, file_name)
+                    file_ids.append(fid)
+                    files_downloaded += 1
+                except Exception as exc:
+                    logger.warning("下载/上传BP文件失败: %s, 错误: %s", file_path, exc)
 
-        # 添加评审说明
+        if files_downloaded == 0:
+            raise HTTPException(
+                status_code=502,
+                detail="无法从存储服务下载评审材料文件，请稍后重试",
+            )
+
+        # 构建 Qwen-Long 消息（通过 fileid:// 引用文档）
+        fileid_refs = ",".join(f"fileid://{fid}" for fid in file_ids)
+
         available = []
         if has_text_ppt:
             available.append("文本PPT")
@@ -194,18 +209,16 @@ class TextReviewService:
             available.append("路演PPT")
         if has_bp:
             available.append("BP")
-        user_content.append(
-            {"type": "text", "text": f"本次评审基于以下材料：{'、'.join(available)}。"}
-        )
 
         messages = [
             {"role": "system", "content": assembled_prompt},
-            {"role": "user", "content": user_content},
+            {"role": "system", "content": fileid_refs},
+            {"role": "user", "content": f"本次评审基于以下材料：{'、'.join(available)}。请按照评审规则进行评分。"},
         ]
 
-        # 调用AI API
+        # 调用 Qwen-Long（文档理解模型）
         try:
-            ai_response = await call_ai_api(messages)
+            ai_response = await call_ai_api(messages, model="qwen-long", multimodal=False)
         except RuntimeError as exc:
             logger.error("文本评审AI API调用失败: %s", exc)
             raise HTTPException(

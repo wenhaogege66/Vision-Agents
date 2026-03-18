@@ -20,7 +20,7 @@ from app.services.project_service import ProjectService
 from app.services.prompt_service import prompt_service
 from app.services.rule_service import rule_service
 from app.utils.ai_utils import DEFAULT_VIDEO_TIMEOUT, call_ai_api
-from app.utils.storage_utils import download_file_as_base64_data_uri
+from app.utils.storage_utils import download_and_upload_to_dashscope
 
 logger = logging.getLogger(__name__)
 
@@ -118,36 +118,24 @@ class OfflineReviewService:
         # 7. 构建多模态消息并调用AI API
         user_content: list[dict] = []
 
-        # 路演视频（base64 传入）
+        # 路演视频（上传到 DashScope 临时 OSS）
         video_path = presentation_video["file_path"]
         try:
-            video_data_uri = download_file_as_base64_data_uri(
+            video_oss_url = await download_and_upload_to_dashscope(
                 self._sb, STORAGE_BUCKET, video_path
             )
             user_content.append(
-                {"type": "video_url", "video_url": {"url": video_data_uri}}
+                {"type": "video_url", "video_url": {"url": video_oss_url}}
             )
-        except Exception:
-            logger.warning("下载路演视频失败，尝试使用公开URL: %s", video_path)
-            video_url = self._sb.storage.from_(STORAGE_BUCKET).get_public_url(
-                video_path
-            )
-            user_content.append(
-                {"type": "video_url", "video_url": {"url": video_url}}
-            )
+        except Exception as exc:
+            logger.error("下载/上传路演视频失败: %s, 错误: %s", video_path, exc)
+            raise HTTPException(
+                status_code=502,
+                detail="无法上传路演视频到 AI 服务，请稍后重试",
+            ) from exc
 
-        # 路演PPT文件（直接传原始文件 base64）
-        file_path = presentation_ppt.get("file_path")
-        if file_path:
-            try:
-                data_uri = download_file_as_base64_data_uri(
-                    self._sb, STORAGE_BUCKET, file_path
-                )
-                user_content.append(
-                    {"type": "image_url", "image_url": {"url": data_uri}}
-                )
-            except Exception:
-                logger.warning("下载路演PPT文件失败: %s", file_path)
+        # 路演PPT文件 — 视觉模型不支持直接处理 PPTX，跳过
+        # 离线路演评审主要基于视频内容
 
         user_content.append(
             {

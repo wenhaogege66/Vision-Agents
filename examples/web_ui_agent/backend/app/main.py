@@ -10,6 +10,9 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.models.schemas import ErrorResponse
 
+# 配置日志级别，确保 INFO 日志可见
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(

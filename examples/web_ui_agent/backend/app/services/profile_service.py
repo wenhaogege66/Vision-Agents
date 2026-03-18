@@ -14,7 +14,7 @@ from supabase import Client
 
 from app.services.material_service import MaterialService
 from app.utils.ai_utils import call_ai_api
-from app.utils.storage_utils import download_file_as_base64_data_uri
+from app.utils.dashscope_file import upload_file_to_dashscope
 
 logger = logging.getLogger(__name__)
 
@@ -72,79 +72,67 @@ class ProfileService:
                 detail="请先上传 BP 或文本 PPT 材料后再提取项目简介",
             )
 
-        # 2. 构建 AI 消息
-        user_content: list[dict] = []
+        # 2. 下载文件并上传到 DashScope，获取 file-id
+        file_ids: list[str] = []
+        file_descriptions: list[str] = []
 
-        # 文本 PPT 文件（直接传原始文件 base64）
+        # 文本 PPT
         if text_ppt:
             file_path = text_ppt.get("file_path")
             if file_path:
                 try:
-                    data_uri = download_file_as_base64_data_uri(
-                        self._sb, STORAGE_BUCKET, file_path
-                    )
-                    # 根据文件类型选择合适的传入方式
-                    if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-                        user_content.append(
-                            {"type": "image_url", "image_url": {"url": data_uri}}
-                        )
-                    else:
-                        # PDF/PPTX 等文档文件也通过 image_url 传入（通义千问支持）
-                        user_content.append(
-                            {"type": "image_url", "image_url": {"url": data_uri}}
-                        )
-                except Exception:
-                    logger.warning("下载文本PPT文件失败: %s", file_path)
+                    logger.info("开始处理文本PPT: %s", file_path)
+                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                    file_name = file_path.rsplit("/", 1)[-1]
+                    logger.info("文本PPT下载成功: %s (%.1fMB)", file_path, len(content) / 1024 / 1024)
+                    fid = await upload_file_to_dashscope(content, file_name)
+                    file_ids.append(fid)
+                    file_descriptions.append(f"文本PPT: {text_ppt['file_name']}（版本 {text_ppt['version']}）")
+                except Exception as exc:
+                    logger.warning("下载/上传文本PPT文件失败: %s, 错误: %s", file_path, exc)
 
-        # BP 文件（直接传原始文件 base64）
+        # BP
         if bp:
             file_path = bp.get("file_path")
             if file_path:
                 try:
-                    data_uri = download_file_as_base64_data_uri(
-                        self._sb, STORAGE_BUCKET, file_path
-                    )
-                    user_content.append(
-                        {"type": "image_url", "image_url": {"url": data_uri}}
-                    )
-                except Exception:
-                    logger.warning("下载BP文件失败: %s", file_path)
-            user_content.append(
-                {
-                    "type": "text",
-                    "text": f"以上包含商业计划书（BP）文件: {bp['file_name']}（版本 {bp['version']}）。",
-                }
+                    logger.info("开始处理BP: %s", file_path)
+                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                    file_name = file_path.rsplit("/", 1)[-1]
+                    logger.info("BP下载成功: %s (%.1fMB)", file_path, len(content) / 1024 / 1024)
+                    fid = await upload_file_to_dashscope(content, file_name)
+                    file_ids.append(fid)
+                    file_descriptions.append(f"商业计划书（BP）: {bp['file_name']}（版本 {bp['version']}）")
+                except Exception as exc:
+                    logger.warning("下载/上传BP文件失败: %s, 错误: %s", file_path, exc)
+
+        if not file_ids:
+            raise HTTPException(
+                status_code=502,
+                detail="无法从存储服务下载材料文件，请稍后重试",
             )
 
-        # 提取指令
-        parts = []
-        if bp:
-            parts.append("BP")
-        if text_ppt:
-            parts.append("文本PPT")
-        user_content.append(
-            {
-                "type": "text",
-                "text": f"请从以上{'和'.join(parts)}材料中提取项目简介的六个结构化字段。",
-            }
-        )
+        # 3. 构建 Qwen-Long 消息（通过 fileid:// 引用文档）
+        fileid_refs = ",".join(f"fileid://{fid}" for fid in file_ids)
+        material_desc = "、".join(file_descriptions)
 
         messages = [
             {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
+            {"role": "system", "content": fileid_refs},
+            {"role": "user", "content": f"请从以上{material_desc}材料中提取项目简介的六个结构化字段。"},
         ]
 
-        # 3. 调用 AI API
-        extracted = await self._call_ai_for_extraction(messages)
+        # 4. 调用 Qwen-Long（文档理解模型，非视觉模型）
+        extracted = await self._call_ai_for_extraction(messages, model="qwen-long")
 
-        # 4. 构建材料版本信息
+        # 5. 构建材料版本信息
         source_versions: dict = {}
         if bp:
             source_versions["bp"] = bp["version"]
         if text_ppt:
             source_versions["text_ppt"] = text_ppt["version"]
 
-        # 5. Upsert 到 project_profiles 表
+        # 6. Upsert 到 project_profiles 表
         now = datetime.now(timezone.utc).isoformat()
         profile_data = {
             "project_id": project_id,
@@ -246,11 +234,12 @@ class ProfileService:
 
     # ── AI 提取辅助方法 ───────────────────────────────────────
 
-    async def _call_ai_for_extraction(self, messages: list[dict]) -> dict:
+    async def _call_ai_for_extraction(self, messages: list[dict], model: str | None = None) -> dict:
         """调用 AI API 提取项目简介字段。
 
         Args:
             messages: OpenAI 格式的消息列表
+            model: 模型名称（如 qwen-long）
 
         Returns:
             包含六个结构化字段的字典
@@ -260,7 +249,7 @@ class ProfileService:
             HTTPException(502): AI 响应格式异常
         """
         try:
-            ai_response = await call_ai_api(messages)
+            ai_response = await call_ai_api(messages, model=model, multimodal=False)
         except RuntimeError as exc:
             logger.error("AI 简介提取 API 调用失败: %s", exc)
             raise HTTPException(

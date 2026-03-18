@@ -94,3 +94,7 @@ profile.html
 /opencode.json
 .ralph-tui/
 .claude/
+examples/web_ui_agent/mock/量子云桥/路演PPT-量子云桥.pptx
+.gitignore
+examples/web_ui_agent/mock/量子云桥/文本PPT-量子云桥.pptx
+examples/web_ui_agent/mock/量子云桥/文本BP-量子云桥商业计划书（121页）.pdf

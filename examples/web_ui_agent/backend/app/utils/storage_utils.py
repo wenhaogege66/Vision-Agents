@@ -1,61 +1,53 @@
-"""Supabase Storage 工具函数：下载文件并转 base64 编码。
+"""Supabase Storage 工具函数：下载文件并上传到 DashScope 临时 OSS。
 
 解决通义千问 API 无法直接访问 Supabase Storage 公开 URL 的问题，
-改为后端先下载文件再以 base64 data URI 传给 AI API。
+同时绕过 DashScope 10MB base64 限制。
+
+流程：Supabase Storage → 后端下载 → 上传到 DashScope 临时 OSS → 获取 oss:// URL
 """
 
-import base64
 import logging
-import mimetypes
+from pathlib import PurePosixPath
 
 from supabase import Client
 
+from app.utils.dashscope_upload import upload_bytes_to_dashscope
+
 logger = logging.getLogger(__name__)
 
-# 常见文件扩展名到 MIME 类型的映射
-_MIME_MAP: dict[str, str] = {
-    ".pdf": "application/pdf",
-    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ".ppt": "application/vnd.ms-powerpoint",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".mp4": "video/mp4",
-    ".avi": "video/x-msvideo",
-    ".mov": "video/quicktime",
-}
+
+def _extract_filename(file_path: str) -> str:
+    """从存储路径中提取文件名。"""
+    return PurePosixPath(file_path).name
 
 
-def _guess_mime(file_path: str) -> str:
-    """根据文件路径猜测 MIME 类型。"""
-    ext = "." + file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
-    if ext in _MIME_MAP:
-        return _MIME_MAP[ext]
-    guessed, _ = mimetypes.guess_type(file_path)
-    return guessed or "application/octet-stream"
-
-
-def download_file_as_base64_data_uri(
+async def download_and_upload_to_dashscope(
     supabase: Client,
     bucket: str,
     file_path: str,
+    model: str | None = None,
 ) -> str:
-    """从 Supabase Storage 下载文件并返回 base64 data URI。
-
-    使用 Supabase SDK 的 download 方法（走认证通道），
-    不依赖公网 URL 可达性。
+    """从 Supabase Storage 下载文件，上传到 DashScope 临时 OSS，返回 oss:// URL。
 
     Args:
         supabase: Supabase 客户端
         bucket: Storage bucket 名称
         file_path: 文件在 bucket 中的路径
+        model: DashScope 目标模型名称
 
     Returns:
-        data URI 字符串，如 "data:image/png;base64,iVBOR..."
+        oss:// 格式的临时 URL（有效期 48 小时）
     """
-    content = supabase.storage.from_(bucket).download(file_path)
-    content_type = _guess_mime(file_path)
-    b64 = base64.b64encode(content).decode("ascii")
-    return f"data:{content_type};base64,{b64}"
+    # 1. 从 Supabase 下载
+    try:
+        content = supabase.storage.from_(bucket).download(file_path)
+    except Exception as exc:
+        logger.error("Supabase Storage 下载失败: bucket=%s, path=%s, error=%s", bucket, file_path, exc)
+        raise
+
+    file_name = _extract_filename(file_path)
+    logger.info("文件下载成功: %s (%.1fMB)", file_path, len(content) / 1024 / 1024)
+
+    # 2. 上传到 DashScope 临时 OSS
+    oss_url = await upload_bytes_to_dashscope(content, file_name, model)
+    return oss_url

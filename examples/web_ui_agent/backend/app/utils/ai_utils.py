@@ -1,6 +1,7 @@
 """AI API 调用封装：含重试逻辑和超时配置"""
 
 import asyncio
+import json as json_mod
 import logging
 
 import httpx
@@ -9,9 +10,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# 默认超时（秒）
-DEFAULT_TEXT_TIMEOUT = 60
-DEFAULT_VIDEO_TIMEOUT = 120
+# 默认超时（秒）— 使用 oss:// URL 后 payload 很小，但 AI 处理大文件仍需时间
+DEFAULT_TEXT_TIMEOUT = 120
+DEFAULT_VIDEO_TIMEOUT = 300
 
 # 重试配置
 MAX_RETRIES = 2
@@ -47,6 +48,7 @@ async def call_ai_api(
     headers = {
         "Authorization": f"Bearer {settings.dashscope_api_key}",
         "Content-Type": "application/json",
+        "X-DashScope-OssResourceResolve": "enable",
     }
     payload = {
         "model": model,
@@ -55,9 +57,16 @@ async def call_ai_api(
 
     last_error: Exception | None = None
 
+    # 记录 payload 大小，方便排查大文件问题
+    payload_size = len(json_mod.dumps(payload))
+    logger.info("AI API 请求: url=%s, model=%s, payload_size=%.1fMB, timeout=%ds",
+                api_url, model, payload_size / 1024 / 1024, timeout)
+
     for attempt in range(1, MAX_RETRIES + 2):  # 首次 + 最多 MAX_RETRIES 次重试
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            # 分别设置超时：连接 30s，读取/写入用传入的 timeout
+            timeouts = httpx.Timeout(timeout, connect=30.0)
+            async with httpx.AsyncClient(timeout=timeouts) as client:
                 response = await client.post(
                     api_url,
                     headers=headers,
@@ -66,11 +75,13 @@ async def call_ai_api(
                 response.raise_for_status()
                 return response.json()
 
-        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.ConnectError) as exc:
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.ConnectError, httpx.ReadError) as exc:
             last_error = exc
-            error_detail = str(exc)
+            error_detail = str(exc) or repr(exc)
             if isinstance(exc, httpx.HTTPStatusError):
                 error_detail = f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+            else:
+                error_detail = f"{type(exc).__name__}: {error_detail}"
             if attempt <= MAX_RETRIES:
                 logger.warning(
                     "AI API 调用失败 (第 %d 次)，%d 秒后重试: %s",

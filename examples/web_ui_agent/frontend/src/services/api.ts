@@ -222,13 +222,13 @@ export const reviewApi = {
       stage,
       judge_style: judgeStyle,
       ...(materialTypes ? { material_types: materialTypes } : {}),
-    }),
+    }, { timeout: 180_000 }),
 
   offlineReview: (projectId: string, stage: string, judgeStyle = 'strict') =>
     api.post<ReviewResult>(`/projects/${projectId}/reviews/offline`, {
       stage,
       judge_style: judgeStyle,
-    }),
+    }, { timeout: 360_000 }),
 
   list: (projectId: string) =>
     api.get<ReviewResult[]>(`/projects/${projectId}/reviews`),
@@ -291,7 +291,7 @@ export const voiceApi = {
 
 export const profileApi = {
   extract: (projectId: string) =>
-    api.post<ProjectProfile>(`/projects/${projectId}/profile/extract`).then(res => res.data),
+    api.post<ProjectProfile>(`/projects/${projectId}/profile/extract`, null, { timeout: 180_000 }).then(res => res.data),
 
   get: (projectId: string) =>
     api.get<ProjectProfile | null>(`/projects/${projectId}/profile`).then(res => res.data),
