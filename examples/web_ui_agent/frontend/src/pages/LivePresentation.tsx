@@ -15,6 +15,7 @@ const { Title, Text } = Typography;
 export default function LivePresentation() {
   const { projectId } = useParams<{ projectId: string }>();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
   const [mode, setMode] = useState('question');
   const [style, setStyle] = useState('strict');
   const [voice, setVoice] = useState('Cherry');
@@ -30,7 +31,12 @@ export default function LivePresentation() {
     try {
       const res = await liveApi.start(projectId, { mode, style, voice, voice_type: voiceType });
       setSessionId(res.data.session_id);
-      msg.success('路演会话已创建');
+      const url = res.data.call_info?.join_url;
+      if (url) {
+        setJoinUrl(url);
+        window.open(url, '_blank');
+      }
+      msg.success('路演会话已创建，已在新标签页打开会议室');
     } catch (err: unknown) {
       const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -61,6 +67,7 @@ export default function LivePresentation() {
       await liveApi.end(projectId, sessionId);
       msg.success('路演已结束，评审总结已生成');
       setSessionId(null);
+      setJoinUrl(null);
     } catch {
       msg.error('结束路演失败');
     } finally {
@@ -141,11 +148,18 @@ export default function LivePresentation() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexDirection: 'column',
+                gap: 16,
               }}
             >
               <Text style={{ color: '#fff', fontSize: 18 }}>
-                GetStream 视频通话区域（会话 ID: {sessionId}）
+                路演会话进行中（会话 ID: {sessionId}）
               </Text>
+              {joinUrl && (
+                <Button type="link" style={{ color: '#1890ff' }} onClick={() => window.open(joinUrl, '_blank')}>
+                  重新打开 GetStream 会议室
+                </Button>
+              )}
             </div>
             <ModeSwitch value={mode} onChange={handleModeSwitch} disabled={switching} />
             <Button

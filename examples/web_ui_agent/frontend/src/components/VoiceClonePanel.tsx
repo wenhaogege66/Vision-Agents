@@ -38,7 +38,7 @@ export default function VoiceClonePanel({ onCloned }: Props) {
       <Alert
         type="info"
         showIcon
-        message="录音指南"
+        title="录音指南"
         description="请上传10~20秒清晰的语音音频（WAV/MP3/M4A，≥24kHz采样率，单声道），避免背景噪音。"
         style={{ marginBottom: 12 }}
       />

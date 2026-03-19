@@ -124,6 +124,8 @@ class ExportService:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
         from reportlab.platypus import (
             Paragraph,
             SimpleDocTemplate,
@@ -132,18 +134,26 @@ class ExportService:
             TableStyle,
         )
 
+        # 注册中文字体
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4)
         styles = getSampleStyleSheet()
         elements: list = []
 
         title_style = ParagraphStyle(
-            "ReportTitle", parent=styles["Title"], fontSize=20
+            "ReportTitle", parent=styles["Title"], fontSize=20,
+            fontName="STSong-Light",
         )
         heading_style = ParagraphStyle(
-            "SectionHeading", parent=styles["Heading2"], fontSize=14
+            "SectionHeading", parent=styles["Heading2"], fontSize=14,
+            fontName="STSong-Light",
         )
-        normal_style = styles["Normal"]
+        normal_style = ParagraphStyle(
+            "ChineseNormal", parent=styles["Normal"],
+            fontName="STSong-Light",
+        )
 
         # ── 标题 ──
         elements.append(Paragraph("项目评审报告", title_style))
@@ -195,6 +205,7 @@ class ExportService:
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                     ("ALIGN", (1, 0), (1, -1), "CENTER"),
                     ("ALIGN", (3, 0), (3, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, -1), "STSong-Light"),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F2F2")]),
                 ]
             )
@@ -244,6 +255,7 @@ class ExportService:
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                         ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, -1), "STSong-Light"),
                         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F2F2")]),
                     ]
                 )

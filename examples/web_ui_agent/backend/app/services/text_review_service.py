@@ -161,6 +161,7 @@ class TextReviewService:
         if has_bp:
             materials_to_upload.append((bp, "BP"))
 
+        failed_labels: list[str] = []
         for material, label in materials_to_upload:
             file_path = material.get("file_path")
             if not file_path:
@@ -172,11 +173,13 @@ class TextReviewService:
                 uploaded_files.append({"file_id": fid, "label": label})
             except Exception as exc:
                 logger.warning("下载/上传%s文件失败: %s, 错误: %s", label, file_path, exc)
+                failed_labels.append(label)
 
         if not uploaded_files:
+            failed_info = "、".join(failed_labels) if failed_labels else "所有材料"
             raise HTTPException(
-                status_code=502,
-                detail="无法从存储服务下载评审材料文件，请稍后重试",
+                status_code=400,
+                detail=f"以下材料文件在存储中不存在或已损坏：{failed_info}，请重新上传后再发起评审",
             )
 
         # 构建 Qwen-Long 消息（每个 fileid 单独一条 system message）
