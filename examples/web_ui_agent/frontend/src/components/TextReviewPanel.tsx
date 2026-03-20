@@ -1,7 +1,6 @@
 import {
   Card,
   Descriptions,
-  List,
   Table,
   Tag,
   Typography,
@@ -142,8 +141,10 @@ export default function TextReviewPanel({ result }: Props) {
                 column={1}
                 size={isCompact ? 'small' : 'default'}
                 bordered={!isCompact}
-                labelStyle={{ width: isCompact ? 80 : 140, fontWeight: 500 }}
-                contentStyle={{ whiteSpace: 'pre-wrap' }}
+                styles={{
+                  label: { width: isCompact ? 80 : 140, fontWeight: 500 },
+                  content: { whiteSpace: 'pre-wrap' },
+                }}
               >
                 {dim.sub_items.map((item) => (
                   <Descriptions.Item key={item.name} label={item.name}>
@@ -159,15 +160,13 @@ export default function TextReviewPanel({ result }: Props) {
           {dim.suggestions.length > 0 && (
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>改进建议</Text>
-              <List
-                size="small"
-                dataSource={dim.suggestions}
-                renderItem={(s) => (
-                  <List.Item style={{ padding: '6px 0' }}>
+              <div>
+                {dim.suggestions.map((s, i) => (
+                  <div key={i} style={{ padding: '6px 0' }}>
                     <Paragraph style={{ margin: 0 }}>• {s}</Paragraph>
-                  </List.Item>
-                )}
-              />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </Card>
@@ -176,15 +175,13 @@ export default function TextReviewPanel({ result }: Props) {
       {/* ── 总体改进建议 ───────────────────────────────────── */}
       {result.overall_suggestions.length > 0 && (
         <Card title="总体改进建议" style={{ marginBottom: 16 }}>
-          <List
-            size="small"
-            dataSource={result.overall_suggestions}
-            renderItem={(s) => (
-              <List.Item style={{ padding: '6px 0' }}>
+          <div>
+            {result.overall_suggestions.map((s, i) => (
+              <div key={i} style={{ padding: '6px 0' }}>
                 <Paragraph style={{ margin: 0 }}>• {s}</Paragraph>
-              </List.Item>
-            )}
-          />
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -215,15 +212,13 @@ export default function TextReviewPanel({ result }: Props) {
             .map((d) => (
               <div key={d.name} style={{ marginBottom: 12 }}>
                 <Text strong>{d.name} — 改进建议：</Text>
-                <List
-                  size="small"
-                  dataSource={d.suggestions}
-                  renderItem={(s) => (
-                    <List.Item style={{ padding: '4px 0' }}>
+                <div>
+                  {d.suggestions.map((s, i) => (
+                    <div key={i} style={{ padding: '4px 0' }}>
                       <Paragraph style={{ margin: 0 }}>• {s}</Paragraph>
-                    </List.Item>
-                  )}
-                />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
 

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Spin, Typography, Space, Select, Progress, Tag, List } from 'antd';
+import { Button, Card, Flex, Spin, Typography, Select, Tag } from 'antd';
 import { msg } from '@/utils/messageHolder';
 import { CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
+import AIProcessingCard from '@/components/AIProcessingCard';
 import BackButton from '@/components/BackButton';
 import { reviewApi } from '@/services/api';
 import { useReadinessChecker } from '@/hooks/useReadinessChecker';
@@ -100,26 +101,22 @@ export default function OfflineReview() {
         {statusLoading ? (
           <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
         ) : (
-          <List
-            size="small"
-            dataSource={[
+          <Flex vertical gap={8}>
+            {[
               { key: 'video', label: '路演视频', ready: videoReady, icon: <VideoCameraOutlined /> },
               { key: 'audio', label: '路演音频', ready: audioReady, icon: <SoundOutlined /> },
-            ]}
-            renderItem={(item) => (
-              <List.Item>
-                <Space>
-                  {item.icon}
-                  <Text>{item.label}</Text>
-                  {item.ready ? (
-                    <Tag icon={<CheckCircleOutlined />} color="success">已上传</Tag>
-                  ) : (
-                    <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
-                  )}
-                </Space>
-              </List.Item>
-            )}
-          />
+            ].map((item) => (
+              <Flex key={item.key} align="center" gap={8} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                {item.icon}
+                <Text>{item.label}</Text>
+                {item.ready ? (
+                  <Tag icon={<CheckCircleOutlined />} color="success">已上传</Tag>
+                ) : (
+                  <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
+                )}
+              </Flex>
+            ))}
+          </Flex>
         )}
       </Card>
 
@@ -131,37 +128,33 @@ export default function OfflineReview() {
         {statusLoading ? (
           <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
         ) : auxMaterialStates ? (
-          <List
-            size="small"
-            dataSource={AUX_MATERIAL_TYPES.map((type) => ({
-              type,
-              label: AUX_MATERIAL_LABELS[type],
-              state: auxMaterialStates[type],
-            }))}
-            renderItem={(item) => (
-              <List.Item>
-                <Space>
-                  <Text>{item.label}</Text>
-                  {item.state === 'ready' && (
+          <Flex vertical gap={8}>
+            {AUX_MATERIAL_TYPES.map((type) => {
+              const label = AUX_MATERIAL_LABELS[type];
+              const state = auxMaterialStates[type];
+              return (
+                <Flex key={type} align="center" gap={8} wrap="wrap" style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <Text>{label}</Text>
+                  {state === 'ready' && (
                     <Tag icon={<CheckCircleOutlined />} color="success">已就绪</Tag>
                   )}
-                  {item.state === 'not_uploaded' && (
+                  {state === 'not_uploaded' && (
                     <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
                   )}
-                </Space>
-                {item.type === 'presentation_ppt' && item.state === 'not_uploaded' && (
-                  <Text type="warning" style={{ fontSize: 12 }}>
-                    路演PPT未上传，评审将不包含PPT辅助内容
-                  </Text>
-                )}
-              </List.Item>
-            )}
-          />
+                  {type === 'presentation_ppt' && state === 'not_uploaded' && (
+                    <Text type="warning" style={{ fontSize: 12 }}>
+                      路演PPT未上传，评审将不包含PPT辅助内容
+                    </Text>
+                  )}
+                </Flex>
+              );
+            })}
+          </Flex>
         ) : null}
       </Card>
 
       <Card title="评审设置" style={{ marginBottom: 24 }}>
-        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+        <Flex vertical gap="middle" style={{ width: '100%' }}>
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>比赛阶段</Text>
             <Select
@@ -188,15 +181,23 @@ export default function OfflineReview() {
           {!statusLoading && !mediaReady && (
             <Text type="warning">请先上传路演视频或路演音频</Text>
           )}
-        </Space>
+        </Flex>
       </Card>
 
       {loading && (
-        <Card style={{ textAlign: 'center', padding: 40 }}>
-          <Spin size="large" />
-          <Text style={{ display: 'block', marginTop: 16 }}>正在分析路演视频和PPT，请稍候...</Text>
-          <Progress percent={99.9} status="active" showInfo={false} style={{ maxWidth: 300, margin: '16px auto 0' }} />
-        </Card>
+        <AIProcessingCard
+          title="正在进行离线路演评审"
+          estimate="预计需要 3~6 分钟"
+          steps={[
+            '正在读取路演视频和辅助材料...',
+            '正在转录路演音频内容...',
+            '正在分析演讲表现与PPT内容...',
+            '正在进行综合评分...',
+            '正在生成评审报告和改进建议...',
+          ]}
+          stepInterval={12}
+          style={{ marginBottom: 24 }}
+        />
       )}
       {result && <TextReviewPanel result={result} />}
     </div>

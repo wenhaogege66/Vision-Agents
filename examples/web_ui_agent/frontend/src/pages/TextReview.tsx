@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Checkbox, Spin, Typography, Space, Select, Tag } from 'antd';
+import { Button, Card, Checkbox, Spin, Typography, Flex, Select, Tag } from 'antd';
 import { msg } from '@/utils/messageHolder';
 import { SendOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
+import AIProcessingCard from '@/components/AIProcessingCard';
 import BackButton from '@/components/BackButton';
 import { reviewApi } from '@/services/api';
 import { useReadinessChecker } from '@/hooks/useReadinessChecker';
@@ -108,7 +109,7 @@ export default function TextReview() {
         {statusLoading ? (
           <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
         ) : materialStates ? (
-          <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+          <Flex vertical gap="small" style={{ width: '100%' }}>
             {TEXT_MATERIAL_TYPES.map((type) => {
               const state = materialStates[type];
               const isReady = state === 'ready';
@@ -133,12 +134,12 @@ export default function TextReview() {
                 请先上传至少一种评审材料
               </Text>
             )}
-          </Space>
+          </Flex>
         ) : null}
       </Card>
 
       <Card title="评审设置" style={{ marginBottom: 24 }}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Flex vertical gap="middle" style={{ width: '100%' }}>
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>比赛阶段</Text>
             <Select
@@ -162,10 +163,22 @@ export default function TextReview() {
           >
             发起文本评审
           </Button>
-        </Space>
+        </Flex>
       </Card>
 
-      {loading && <Spin size="large" style={{ display: 'block', margin: '40px auto' }} />}
+      {loading && (
+        <AIProcessingCard
+          title="正在进行 AI 文本评审"
+          estimate="预计需要 1~3 分钟"
+          steps={[
+            '正在读取评审材料...',
+            '正在分析项目内容与创新点...',
+            '正在进行多维度评分...',
+            '正在生成评审意见和改进建议...',
+          ]}
+          style={{ marginBottom: 24 }}
+        />
+      )}
       {result && <TextReviewPanel result={result} />}
     </div>
   );

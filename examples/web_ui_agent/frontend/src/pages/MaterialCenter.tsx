@@ -114,6 +114,14 @@ export default function MaterialCenter() {
     fetchMaterials();
   }, [fetchMaterials]);
 
+  // 加载已有的项目简介，用于判断是否需要自动触发 AI 生成
+  useEffect(() => {
+    if (!projectId) return;
+    profileApi.get(projectId)
+      .then((data) => { if (data) setProjectProfile(data); })
+      .catch(() => { /* 无简介，忽略 */ });
+  }, [projectId]);
+
   const validateFile = (file: File, config: MaterialConfig): string | null => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     if (!config.extensions.includes(ext)) {
@@ -148,13 +156,25 @@ export default function MaterialCenter() {
     const opId = `upload_${config.key}` as const;
     startOperation(opId);
     try {
+      // 记录上传前是否已有 BP 和文本 PPT
+      const hadBp = !!materials['bp'];
+      const hadTextPpt = !!materials['text_ppt'];
+
       await materialApi.upload(projectId, config.key, file);
       msg.success(`${config.label} 上传成功`);
       completeOperation(opId);
       await fetchMaterials();
-      // Auto-trigger AI profile extraction for bp or text_ppt uploads
-      if (config.key === 'bp' || config.key === 'text_ppt') {
-        triggerProfileExtract();
+
+      // 仅在用户首次同时拥有 BP 和文本 PPT 时自动触发 AI 项目简介生成
+      // （即之前缺少其中一个，本次上传补齐了）
+      if (!projectProfile && (config.key === 'bp' || config.key === 'text_ppt')) {
+        const willHaveBp = config.key === 'bp' || hadBp;
+        const willHaveTextPpt = config.key === 'text_ppt' || hadTextPpt;
+        const previouslyBothExisted = hadBp && hadTextPpt;
+
+        if (willHaveBp && willHaveTextPpt && !previouslyBothExisted) {
+          triggerProfileExtract();
+        }
       }
     } catch {
       msg.error(`${config.label} 上传失败`);

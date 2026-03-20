@@ -6,19 +6,16 @@ import {
   Card,
   Descriptions,
   Divider,
-  List,
   Space,
   Spin,
-  Table,
   Tag,
   Typography,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
 import { msg } from '@/utils/messageHolder';
 import { DownloadOutlined } from '@ant-design/icons';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import { reviewApi } from '@/services/api';
-import type { ReviewResult, PPTVisualDimension } from '@/types';
+import type { ReviewResult } from '@/types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -29,14 +26,6 @@ const MATERIAL_LABELS: Record<string, string> = {
   presentation_ppt: '路演PPT',
   presentation_video: '路演视频',
   presentation_audio: '路演音频',
-};
-
-/* ── rating → tag color mapping (consistent with TextReviewPanel) */
-const RATING_COLORS: Record<string, string> = {
-  优秀: 'green',
-  良好: 'blue',
-  一般: 'orange',
-  较差: 'red',
 };
 
 export default function ReviewDetail() {
@@ -77,31 +66,6 @@ export default function ReviewDetail() {
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!result) return <Title level={4}>评审记录不存在</Title>;
 
-  /* ── PPT visual review table columns ──────────────────────── */
-  const visualColumns: ColumnsType<PPTVisualDimension> = [
-    {
-      title: '评审维度',
-      dataIndex: 'name',
-      key: 'name',
-      width: 120,
-    },
-    {
-      title: '评级',
-      dataIndex: 'rating',
-      key: 'rating',
-      width: 80,
-      align: 'center',
-      render: (rating: string) => (
-        <Tag color={RATING_COLORS[rating] ?? 'default'}>{rating}</Tag>
-      ),
-    },
-    {
-      title: '评价',
-      dataIndex: 'comment',
-      key: 'comment',
-    },
-  ];
-
   return (
     <div style={{ padding: 24 }}>
       <BackButton to={`/projects/${projectId}/reviews`} label="返回评审历史" />
@@ -126,59 +90,6 @@ export default function ReviewDetail() {
       {/* ── 核心评审结果（TextReviewPanel） ─────────────────── */}
       <TextReviewPanel result={result} />
 
-      {/* ── PPT 视觉评审区块 ───────────────────────────────── */}
-      {result.ppt_visual_review && (
-        <div style={{ maxWidth: 960, margin: '0 auto' }}>
-          <Card
-            title={
-              <Space>
-                <span>PPT 视觉评审</span>
-                <Tag color="purple">视觉维度</Tag>
-              </Space>
-            }
-            style={{ marginBottom: 16 }}
-          >
-            <Table<PPTVisualDimension>
-              rowKey="name"
-              columns={visualColumns}
-              dataSource={result.ppt_visual_review.dimensions}
-              pagination={false}
-              size="middle"
-              style={{ marginBottom: 16 }}
-            />
-
-            {/* 各维度改进建议（仅非优秀维度） */}
-            {result.ppt_visual_review.dimensions
-              .filter((d) => d.suggestions.length > 0)
-              .map((d) => (
-                <div key={d.name} style={{ marginBottom: 12 }}>
-                  <Text strong>{d.name} — 改进建议：</Text>
-                  <List
-                    size="small"
-                    dataSource={d.suggestions}
-                    renderItem={(s) => (
-                      <List.Item style={{ padding: '4px 0' }}>
-                        <Paragraph style={{ margin: 0 }}>• {s}</Paragraph>
-                      </List.Item>
-                    )}
-                  />
-                </div>
-              ))}
-
-            {/* 总体评价 */}
-            {result.ppt_visual_review.overall_comment && (
-              <>
-                <Divider style={{ margin: '12px 0' }} />
-                <Text strong>总体评价：</Text>
-                <Paragraph style={{ marginTop: 4 }}>
-                  {result.ppt_visual_review.overall_comment}
-                </Paragraph>
-              </>
-            )}
-          </Card>
-        </div>
-      )}
-
       {/* ── 路演者评价区块 ─────────────────────────────────── */}
       {result.presenter_evaluation && (
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -195,8 +106,10 @@ export default function ReviewDetail() {
               column={1}
               bordered
               size="middle"
-              labelStyle={{ width: 140, fontWeight: 500 }}
-              contentStyle={{ whiteSpace: 'pre-wrap' }}
+              styles={{
+                label: { width: 140, fontWeight: 500 },
+                content: { whiteSpace: 'pre-wrap' },
+              }}
             >
               <Descriptions.Item label="语言表达">
                 {result.presenter_evaluation.language_expression}
@@ -220,15 +133,13 @@ export default function ReviewDetail() {
               <>
                 <Divider style={{ margin: '12px 0' }} />
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>改进建议</Text>
-                <List
-                  size="small"
-                  dataSource={result.presenter_evaluation.suggestions}
-                  renderItem={(s) => (
-                    <List.Item style={{ padding: '6px 0' }}>
+                <div>
+                  {result.presenter_evaluation.suggestions.map((s, i) => (
+                    <div key={i} style={{ padding: '6px 0' }}>
                       <Paragraph style={{ margin: 0 }}>• {s}</Paragraph>
-                    </List.Item>
-                  )}
-                />
+                    </div>
+                  ))}
+                </div>
               </>
             )}
           </Card>

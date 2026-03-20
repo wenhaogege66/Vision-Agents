@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import BackButton from '@/components/BackButton';
 import { Button, Card, Space, Typography, Divider, Row, Col } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { PlayCircleOutlined, ShareAltOutlined, StopOutlined } from '@ant-design/icons';
+import { LoadingOutlined, PlayCircleOutlined, ShareAltOutlined, StopOutlined } from '@ant-design/icons';
 import ModeSwitch from '@/components/ModeSwitch';
 import VoiceSelector from '@/components/VoiceSelector';
 import VoiceClonePanel from '@/components/VoiceClonePanel';
@@ -129,6 +129,14 @@ export default function LivePresentation() {
                 >
                   开始路演
                 </Button>
+                {starting && (
+                  <Card size="small" style={{ textAlign: 'center', background: '#f6f8fa' }}>
+                    <Space>
+                      <LoadingOutlined style={{ color: '#1677ff' }} />
+                      <Text type="secondary">正在创建路演会话，连接 AI 评委中...</Text>
+                    </Space>
+                  </Card>
+                )}
               </Space>
             </Card>
           </Col>

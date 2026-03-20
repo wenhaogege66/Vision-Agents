@@ -90,7 +90,7 @@ async def list_reviews(
     try:
         result = (
             supabase.table("reviews")
-            .select("id, review_type, total_score, stage, judge_style, status, created_at")
+            .select("id, review_type, total_score, stage, judge_style, status, created_at, selected_materials")
             .eq("project_id", project_id)
             .order("created_at", desc=True)
             .execute()
@@ -170,6 +170,9 @@ async def get_review_detail(
         overall_suggestions=[],
         status=review.get("status", "completed"),
         created_at=created_at,
+        selected_materials=review.get("selected_materials"),
+        ppt_visual_review=review.get("ppt_visual_review"),
+        presenter_evaluation=review.get("presenter_evaluation"),
     )
 
 
