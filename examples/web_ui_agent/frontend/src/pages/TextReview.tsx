@@ -8,6 +8,7 @@ import TextReviewPanel from '@/components/TextReviewPanel';
 import BackButton from '@/components/BackButton';
 import { reviewApi } from '@/services/api';
 import { useReadinessChecker } from '@/hooks/useReadinessChecker';
+import { useConcurrentState } from '@/hooks/useConcurrentState';
 import type { ReviewResult, CompetitionStage, MaterialStatusItem } from '@/types';
 import { STAGE_LABELS } from '@/types';
 
@@ -18,13 +19,12 @@ const stageOptions = Object.entries(STAGE_LABELS)
   .map(([value, label]) => ({ value, label }));
 
 /** Material types relevant to text review. */
-const TEXT_MATERIAL_TYPES = ['bp', 'text_ppt', 'presentation_ppt'] as const;
+const TEXT_MATERIAL_TYPES = ['text_ppt', 'bp'] as const;
 type TextMaterialType = (typeof TEXT_MATERIAL_TYPES)[number];
 
 const MATERIAL_LABELS: Record<TextMaterialType, string> = {
-  bp: '商业计划书 (BP)',
   text_ppt: '文本PPT',
-  presentation_ppt: '路演PPT',
+  bp: '商业计划书 (BP)',
 };
 
 /** Determine the display state for a material item. */
@@ -40,9 +40,11 @@ export default function TextReview() {
   const { projectId } = useParams<{ projectId: string }>();
   const [judgeStyle, setJudgeStyle] = useState('strict');
   const [stage, setStage] = useState<CompetitionStage>('school_text');
-  const [loading, setLoading] = useState(false);
+  const { startOperation, completeOperation, failOperation, getStatus } = useConcurrentState();
   const [result, setResult] = useState<ReviewResult | null>(null);
   const [selectedMaterials, setSelectedMaterials] = useState<TextMaterialType[]>([]);
+
+  const loading = getStatus('text_review') === 'loading';
 
   const { status, loading: statusLoading } = useReadinessChecker(projectId ?? '');
 
@@ -50,9 +52,8 @@ export default function TextReview() {
   const materialStates = useMemo(() => {
     if (!status) return null;
     const map: Record<TextMaterialType, 'ready' | 'not_uploaded'> = {
-      bp: getMaterialState('bp', status.bp),
       text_ppt: getMaterialState('text_ppt', status.text_ppt),
-      presentation_ppt: getMaterialState('presentation_ppt', status.presentation_ppt),
+      bp: getMaterialState('bp', status.bp),
     };
     return map;
   }, [status]);
@@ -74,19 +75,19 @@ export default function TextReview() {
 
   const handleReview = async () => {
     if (!projectId || selectedMaterials.length === 0) return;
-    setLoading(true);
+    startOperation('text_review');
     setResult(null);
     try {
       const res = await reviewApi.textReview(projectId, stage, judgeStyle, selectedMaterials);
       setResult(res.data);
+      completeOperation('text_review');
       msg.success('文本评审完成');
     } catch (err: unknown) {
       const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? '评审失败，请稍后重试';
+      failOperation('text_review', errMsg);
       msg.error(errMsg);
-    } finally {
-      setLoading(false);
     }
   };
 

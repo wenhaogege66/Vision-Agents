@@ -7,6 +7,9 @@ from datetime import datetime
 from fastapi import HTTPException
 from supabase import Client
 
+from app.services.rule_service import COMPETITION_NAMES, TRACK_NAMES, GROUP_NAMES
+from app.utils.timing import TimingContext
+
 logger = logging.getLogger(__name__)
 
 # 四种材料类型及其中文名称
@@ -16,6 +19,18 @@ MATERIAL_TYPE_LABELS: dict[str, str] = {
     "presentation_ppt": "路演PPT",
     "presentation_video": "路演视频",
 }
+
+# 评审类型中文标签
+REVIEW_TYPE_LABELS: dict[str, str] = {
+    "text_review": "文本评审",
+    "offline_presentation": "离线路演",
+    "live_presentation": "现场路演",
+}
+
+
+def _resolve_name(value: str, mapping: dict[str, str]) -> str:
+    """将英文ID转换为中文名称，映射不存在时回退显示原始值。"""
+    return mapping.get(value, value)
 
 
 class ExportService:
@@ -37,17 +52,26 @@ class ExportService:
         Returns:
             PDF 文件的字节内容
         """
+        tc = TimingContext()
+
         # 1. 查询项目基本信息
-        project = await self._fetch_project(project_id, user_id)
+        with tc.track("fetch_project"):
+            project = await self._fetch_project(project_id, user_id)
 
         # 2. 查询材料状态
-        materials = await self._fetch_material_status(project_id)
+        with tc.track("fetch_materials"):
+            materials = await self._fetch_material_status(project_id)
 
         # 3. 查询评审记录
-        reviews = await self._fetch_reviews(project_id)
+        with tc.track("fetch_reviews"):
+            reviews = await self._fetch_reviews(project_id)
 
         # 4. 生成 PDF
-        return self._build_pdf(project, materials, reviews)
+        with tc.track("build_pdf"):
+            pdf_bytes = self._build_pdf(project, materials, reviews)
+
+        logger.info("ExportService.generate_report timing: %s", tc.summary())
+        return pdf_bytes
 
     # ── 数据查询方法 ──────────────────────────────────────────
 
@@ -165,9 +189,9 @@ class ExportService:
 
         info_items = [
             ("项目名称", project.get("name", "-")),
-            ("赛事", project.get("competition", "-")),
-            ("赛道", project.get("track", "-")),
-            ("组别", project.get("group", "-")),
+            ("赛事", _resolve_name(project.get("competition", "-"), COMPETITION_NAMES)),
+            ("赛道", _resolve_name(project.get("track", "-"), TRACK_NAMES)),
+            ("组别", _resolve_name(project.get("group", "-"), GROUP_NAMES)),
             ("当前阶段", project.get("current_stage", "-")),
         ]
         for label, value in info_items:
@@ -237,7 +261,7 @@ class ExportService:
 
                 review_table_data.append(
                     [
-                        r.get("review_type", "-"),
+                        _resolve_name(r.get("review_type", "-"), REVIEW_TYPE_LABELS),
                         str(r.get("total_score", "-")),
                         r.get("judge_style", "-"),
                         r.get("stage", "-"),

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.models.schemas import ErrorResponse
+from app.utils.timing_middleware import TimingMiddleware
 
 # 配置日志级别，确保 INFO 日志可见
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
@@ -29,6 +30,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册 API 耗时监控中间件
+app.add_middleware(TimingMiddleware)
 
 
 # ── 全局异常处理器 ────────────────────────────────────────────

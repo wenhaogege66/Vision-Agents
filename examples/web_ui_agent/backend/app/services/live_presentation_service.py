@@ -23,10 +23,12 @@ from vision_agents.plugins import getstream, qwen
 from app.config import settings
 from app.services.knowledge_service import knowledge_service
 from app.services.material_service import MaterialService
+from app.services.profile_service import ProfileService
 from app.services.project_service import ProjectService
 from app.services.prompt_service import prompt_service
 from app.services.rule_service import rule_service
 from app.services.voice_service import VoiceService
+from app.utils.timing import TimingContext
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,7 @@ class LivePresentationService:
         self._sb = supabase
         self._material_svc = MaterialService(supabase)
         self._project_svc = ProjectService(supabase)
+        self._profile_svc = ProfileService(supabase)
         self._voice_svc = VoiceService(supabase)
 
     async def start_session(
@@ -115,6 +118,8 @@ class LivePresentationService:
 
         _ensure_stream_env()
 
+        tc = TimingContext()
+
         # 获取路演PPT
         presentation_ppt = await self._material_svc.get_latest(project_id, "presentation_ppt")
         if not presentation_ppt:
@@ -129,10 +134,32 @@ class LivePresentationService:
         kb_pres = knowledge_service.load_knowledge("presentation")
         knowledge_content = "\n\n".join(p for p in [kb_ppt, kb_pres] if p.strip())
 
+        # 查询项目简介
+        with tc.track("fetch_profile"):
+            profile = await self._profile_svc.get_profile(project_id)
+
+        # 构建材料内容描述
         material_content = (
             f"路演PPT文件: {presentation_ppt['file_name']} "
             f"(版本 {presentation_ppt['version']})"
         )
+
+        if profile:
+            profile_parts = []
+            field_labels = {
+                "team_intro": "团队介绍",
+                "domain": "所属领域",
+                "startup_status": "创业状态",
+                "achievements": "已有成果",
+                "product_links": "产品链接",
+                "next_goals": "下一步目标",
+            }
+            for field, label in field_labels.items():
+                value = profile.get(field)
+                if value:
+                    profile_parts.append(f"{label}: {value}")
+            if profile_parts:
+                material_content += "\n\n## 项目简介\n" + "\n".join(profile_parts)
 
         assembled_prompt = prompt_service.assemble_prompt(
             template_name="live_presentation",
@@ -147,11 +174,12 @@ class LivePresentationService:
         call_id = f"live_{session_id[:8]}"
 
         # 创建 Agent，让它加入通话，生成人类用户的 join URL
-        agent, agent_task, join_url = await self._launch_agent(
-            call_id=call_id,
-            user_id=user_id,
-            instructions=assembled_prompt,
-        )
+        with tc.track("launch_agent"):
+            agent, agent_task, join_url = await self._launch_agent(
+                call_id=call_id,
+                user_id=user_id,
+                instructions=assembled_prompt,
+            )
 
         session = LiveSession(
             session_id=session_id,
@@ -175,6 +203,8 @@ class LivePresentationService:
         )
         session.material_versions = {"presentation_ppt": presentation_ppt["version"]}
         _active_sessions[session_id] = session
+
+        logger.info("LivePresentationService.start_session timing: %s", tc.summary())
 
         return {
             "session_id": session_id,

@@ -64,6 +64,33 @@ class DimensionScore(BaseModel):
     suggestions: list[str]
 
 
+class PPTVisualDimension(BaseModel):
+    """PPT 视觉评审单维度"""
+
+    name: str  # 信息结构/信息密度/视觉设计/图示表达/说服力/完整性
+    rating: str  # 优秀/良好/一般/较差
+    comment: str  # 具体评价
+    suggestions: list[str]  # 改进建议（优秀时可为空）
+
+
+class PPTVisualReviewResult(BaseModel):
+    """PPT 视觉评审结果"""
+
+    dimensions: list[PPTVisualDimension]
+    overall_comment: str
+
+
+class PresenterEvaluation(BaseModel):
+    """路演者表现评价"""
+
+    language_expression: str  # 语言表达评价
+    rhythm_control: str  # 节奏控制评价
+    logic_clarity: str  # 逻辑清晰度评价
+    engagement: str  # 互动感评价
+    overall_comment: str  # 总体评价
+    suggestions: list[str]  # 改进建议
+
+
 class ReviewResult(BaseModel):
     """评审结果"""
 
@@ -74,6 +101,9 @@ class ReviewResult(BaseModel):
     overall_suggestions: list[str]
     status: str
     created_at: datetime
+    selected_materials: list[str] | None = None  # 评审所选材料类型列表
+    ppt_visual_review: dict | None = None  # PPT 视觉评审结果
+    presenter_evaluation: dict | None = None  # 路演者表现评价
 
 
 # ── 赛事配置相关 ──────────────────────────────────────────────
@@ -252,6 +282,7 @@ class MaterialStatusResponse(BaseModel):
     text_ppt: MaterialStatusItem
     presentation_ppt: MaterialStatusItem
     presentation_video: MaterialStatusItem
+    presentation_audio: MaterialStatusItem  # 路演音频
     any_text_material_ready: bool
     offline_review_ready: bool
     offline_review_reasons: list[str]

@@ -5,6 +5,13 @@
 import axios from 'axios';
 import type { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { msg } from '@/utils/messageHolder';
+
+// ── 扩展 AxiosRequestConfig 以支持 timing metadata ──────────
+declare module 'axios' {
+  interface InternalAxiosRequestConfig {
+    metadata?: { startTime: number };
+  }
+}
 import type {
   AuthResponse,
   CompetitionInfo,
@@ -38,12 +45,13 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// 请求拦截器：自动附加 Authorization header
+// 请求拦截器：自动附加 Authorization header + 记录请求开始时间
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.metadata = { startTime: performance.now() };
   return config;
 });
 
@@ -81,15 +89,29 @@ export async function retryLastRequest() {
   }
 }
 
-// 响应拦截器：统一错误通知 + 401 处理 + 重试支持
+// 响应拦截器：统一错误通知 + 401 处理 + 重试支持 + 耗时日志
 api.interceptors.response.use(
   (res) => {
     // 成功响应 → 重置重试计数
     _retryCount = 0;
+    // 记录 API 调用耗时
+    const startTime = res.config.metadata?.startTime;
+    if (startTime) {
+      const elapsed = performance.now() - startTime;
+      console.log(`[API Timing] ${res.config.method?.toUpperCase()} ${res.config.url} - ${elapsed.toFixed(0)}ms`);
+    }
     return res;
   },
   (error) => {
     const status = error.response?.status as number | undefined;
+
+    // 记录失败请求的耗时
+    const cfg = error.config as InternalAxiosRequestConfig | undefined;
+    const startTime = cfg?.metadata?.startTime;
+    if (startTime) {
+      const elapsed = performance.now() - startTime;
+      console.log(`[API Timing] ${cfg?.method?.toUpperCase()} ${cfg?.url} - ${elapsed.toFixed(0)}ms (error${status ? ` ${status}` : ''})`);
+    }
 
     // 401 → 清除 token 并跳转登录（保留原有行为）
     if (status === 401) {
@@ -107,7 +129,6 @@ api.interceptors.response.use(
     msg.error(errorMsg);
 
     // 存储失败请求配置以便重试（去掉 adapter 等内部字段，只保留可重发的配置）
-    const cfg = error.config as InternalAxiosRequestConfig | undefined;
     if (cfg) {
       const { url, method, data, params, headers, timeout } = cfg;
       _lastFailedConfig = { url, method, data, params, headers, timeout };

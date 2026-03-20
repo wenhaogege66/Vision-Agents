@@ -14,6 +14,14 @@ const TYPE_LABELS: Record<string, { text: string; color: string }> = {
   offline_presentation: { text: '离线路演', color: 'orange' },
 };
 
+const MATERIAL_LABELS: Record<string, string> = {
+  text_ppt: '文本PPT',
+  bp: 'BP',
+  presentation_ppt: '路演PPT',
+  presentation_video: '路演视频',
+  presentation_audio: '路演音频',
+};
+
 export default function ReviewHistory() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -52,6 +60,17 @@ export default function ReviewHistory() {
             render: (t: string) => {
               const cfg = TYPE_LABELS[t] ?? { text: t, color: 'default' };
               return <Tag color={cfg.color}>{cfg.text}</Tag>;
+            },
+          },
+          {
+            title: '所选材料',
+            dataIndex: 'selected_materials',
+            width: 200,
+            render: (materials: string[] | null | undefined) => {
+              if (!materials || materials.length === 0) return '—';
+              return materials.map((m) => (
+                <Tag key={m}>{MATERIAL_LABELS[m] ?? m}</Tag>
+              ));
             },
           },
           {

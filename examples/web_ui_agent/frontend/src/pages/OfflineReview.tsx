@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, Spin, Typography, Space, Select, Progress, Tag, List } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import BackButton from '@/components/BackButton';
 import { reviewApi } from '@/services/api';
 import { useReadinessChecker } from '@/hooks/useReadinessChecker';
+import { useConcurrentState } from '@/hooks/useConcurrentState';
 import type { ReviewResult, CompetitionStage, MaterialStatusItem } from '@/types';
 import { STAGE_LABELS } from '@/types';
 
@@ -40,13 +41,17 @@ export default function OfflineReview() {
   const { projectId } = useParams<{ projectId: string }>();
   const [judgeStyle, setJudgeStyle] = useState('strict');
   const [stage, setStage] = useState<CompetitionStage>('school_presentation');
-  const [loading, setLoading] = useState(false);
+  const { startOperation, completeOperation, failOperation, getStatus } = useConcurrentState();
   const [result, setResult] = useState<ReviewResult | null>(null);
+
+  const loading = getStatus('offline_review') === 'loading';
 
   const { status, loading: statusLoading } = useReadinessChecker(projectId ?? '');
 
-  // Whether the presentation video is uploaded (core requirement for offline review).
+  // Whether at least one media source (video or audio) is uploaded.
   const videoReady = status?.presentation_video?.uploaded ?? false;
+  const audioReady = status?.presentation_audio?.uploaded ?? false;
+  const mediaReady = videoReady || audioReady;
 
   // Derive per-auxiliary-material state from the readiness status.
   const auxMaterialStates = useMemo(() => {
@@ -61,19 +66,19 @@ export default function OfflineReview() {
 
   const handleReview = async () => {
     if (!projectId) return;
-    setLoading(true);
+    startOperation('offline_review');
     setResult(null);
     try {
       const res = await reviewApi.offlineReview(projectId, stage, judgeStyle);
       setResult(res.data);
+      completeOperation('offline_review');
       msg.success('离线路演评审完成');
     } catch (err: unknown) {
       const errMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? '评审失败，请确保已上传路演PPT和路演视频';
+      failOperation('offline_review', errMsg);
       msg.error(errMsg);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -83,8 +88,40 @@ export default function OfflineReview() {
 
       <Title level={3}>离线路演评审</Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        基于已上传的路演视频和路演PPT进行AI评审，生成综合评审报告（演讲表现、PPT内容、综合评分、改进建议）。
+        基于已上传的路演视频或路演音频和路演PPT进行AI评审，生成综合评审报告（演讲表现、PPT内容、综合评分、改进建议）。
       </Text>
+
+      {/* Media material status (video / audio) — at least one required */}
+      <Card
+        title="媒体材料状态"
+        extra={<Text type="secondary" style={{ fontSize: 12 }}>路演视频和路演音频至少上传一种</Text>}
+        style={{ marginBottom: 24 }}
+      >
+        {statusLoading ? (
+          <Spin style={{ display: 'block', textAlign: 'center', padding: 16 }} />
+        ) : (
+          <List
+            size="small"
+            dataSource={[
+              { key: 'video', label: '路演视频', ready: videoReady, icon: <VideoCameraOutlined /> },
+              { key: 'audio', label: '路演音频', ready: audioReady, icon: <SoundOutlined /> },
+            ]}
+            renderItem={(item) => (
+              <List.Item>
+                <Space>
+                  {item.icon}
+                  <Text>{item.label}</Text>
+                  {item.ready ? (
+                    <Tag icon={<CheckCircleOutlined />} color="success">已上传</Tag>
+                  ) : (
+                    <Tag icon={<CloseCircleOutlined />} color="default">未上传</Tag>
+                  )}
+                </Space>
+              </List.Item>
+            )}
+          />
+        )}
+      </Card>
 
       {/* Auxiliary material status list */}
       <Card
@@ -143,13 +180,13 @@ export default function OfflineReview() {
             icon={<CloudUploadOutlined />}
             onClick={handleReview}
             loading={loading}
-            disabled={!videoReady || loading}
+            disabled={!mediaReady || loading}
             size="large"
           >
             发起离线路演评审
           </Button>
-          {!statusLoading && !videoReady && (
-            <Text type="warning">请先上传路演视频</Text>
+          {!statusLoading && !mediaReady && (
+            <Text type="warning">请先上传路演视频或路演音频</Text>
           )}
         </Space>
       </Card>

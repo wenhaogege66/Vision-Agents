@@ -32,7 +32,8 @@ export type MaterialType =
   | 'bp'
   | 'text_ppt'
   | 'presentation_ppt'
-  | 'presentation_video';
+  | 'presentation_video'
+  | 'presentation_audio';
 
 // ── 评审相关 ─────────────────────────────────────────────────
 
@@ -57,6 +58,30 @@ export interface ReviewResult {
   overall_suggestions: string[];
   status: string;
   created_at: string;
+  selected_materials?: string[];
+  ppt_visual_review?: PPTVisualReviewResult;
+  presenter_evaluation?: PresenterEvaluation;
+}
+
+export interface PPTVisualReviewResult {
+  dimensions: PPTVisualDimension[];
+  overall_comment: string;
+}
+
+export interface PPTVisualDimension {
+  name: string;
+  rating: string;
+  comment: string;
+  suggestions: string[];
+}
+
+export interface PresenterEvaluation {
+  language_expression: string;
+  rhythm_control: string;
+  logic_clarity: string;
+  engagement: string;
+  overall_comment: string;
+  suggestions: string[];
 }
 
 // ── 赛事配置相关 ──────────────────────────────────────────────
@@ -208,6 +233,7 @@ export interface MaterialStatusResponse {
   text_ppt: MaterialStatusItem;
   presentation_ppt: MaterialStatusItem;
   presentation_video: MaterialStatusItem;
+  presentation_audio: MaterialStatusItem;
   any_text_material_ready: boolean;
   offline_review_ready: boolean;
   offline_review_reasons: string[];

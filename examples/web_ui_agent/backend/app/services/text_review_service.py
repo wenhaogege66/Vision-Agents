@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import HTTPException
 from supabase import Client
@@ -20,11 +21,20 @@ from app.services.prompt_service import prompt_service
 from app.services.rule_service import rule_service
 from app.utils.ai_utils import FileParsingError, call_ai_api
 from app.utils.dashscope_file import upload_file_to_dashscope
+from app.utils.timing import TimingContext
 
 logger = logging.getLogger(__name__)
 
 # Supabase Storage bucket 名称
 STORAGE_BUCKET = "materials"
+
+# PPT 视觉评审 prompt 模板路径
+_PPT_VISUAL_PROMPT_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "prompts"
+    / "templates"
+    / "ppt_visual_review.md"
+)
 
 
 class TextReviewService:
@@ -40,7 +50,7 @@ class TextReviewService:
         self._project_svc = ProjectService(supabase)
 
     # 文本评审支持的材料类型
-    VALID_MATERIAL_TYPES = {"bp", "text_ppt", "presentation_ppt"}
+    VALID_MATERIAL_TYPES = {"text_ppt", "bp"}
 
     async def review(
         self,
@@ -73,29 +83,28 @@ class TextReviewService:
             if not requested:
                 raise HTTPException(
                     status_code=400,
-                    detail="请至少选择一种有效的评审材料（bp、text_ppt、presentation_ppt）",
+                    detail="请先上传文本PPT或BP材料",
                 )
         else:
             # 向后兼容：使用所有类型
             requested = list(self.VALID_MATERIAL_TYPES)
 
+        tc = TimingContext()
+
         # 2. 加载请求的材料
         text_ppt = None
         bp = None
-        presentation_ppt = None
 
         if "text_ppt" in requested:
             text_ppt = await self._material_svc.get_latest(project_id, "text_ppt")
         if "bp" in requested:
             bp = await self._material_svc.get_latest(project_id, "bp")
-        if "presentation_ppt" in requested:
-            presentation_ppt = await self._material_svc.get_latest(project_id, "presentation_ppt")
 
         # 至少需要一种材料可用
-        if not text_ppt and not bp and not presentation_ppt:
+        if not text_ppt and not bp:
             raise HTTPException(
                 status_code=400,
-                detail="请先上传至少一种评审材料后再发起文本评审",
+                detail="请先上传文本PPT或BP材料",
             )
 
         # 2. 获取项目信息（赛事/赛道/组别）
@@ -117,17 +126,12 @@ class TextReviewService:
         material_parts: list[str] = []
         has_bp = bp is not None
         has_text_ppt = text_ppt is not None
-        has_presentation_ppt = presentation_ppt is not None
 
         if has_bp:
             material_parts.append(f"文本BP文件: {bp['file_name']} (版本 {bp['version']})")
         if has_text_ppt:
             material_parts.append(
                 f"文本PPT文件: {text_ppt['file_name']} (版本 {text_ppt['version']})"
-            )
-        if has_presentation_ppt:
-            material_parts.append(
-                f"路演PPT文件: {presentation_ppt['file_name']} (版本 {presentation_ppt['version']})"
             )
         material_content = "\n".join(material_parts)
 
@@ -136,8 +140,6 @@ class TextReviewService:
             missing_notes.append("文本BP")
         if not has_text_ppt:
             missing_notes.append("文本PPT")
-        if not has_presentation_ppt:
-            missing_notes.append("路演PPT")
         if missing_notes:
             material_content += f"\n\n注意：本次评审未包含{'/'.join(missing_notes)}，仅基于已选材料进行评审。"
 
@@ -156,8 +158,6 @@ class TextReviewService:
         materials_to_upload = []
         if has_text_ppt:
             materials_to_upload.append((text_ppt, "文本PPT"))
-        if has_presentation_ppt:
-            materials_to_upload.append((presentation_ppt, "路演PPT"))
         if has_bp:
             materials_to_upload.append((bp, "BP"))
 
@@ -167,9 +167,11 @@ class TextReviewService:
             if not file_path:
                 continue
             try:
-                content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+                with tc.track(f"supabase_download_{label}"):
+                    content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
                 file_name = file_path.rsplit("/", 1)[-1]
-                fid = await upload_file_to_dashscope(content, file_name)
+                with tc.track(f"dashscope_upload_{label}"):
+                    fid = await upload_file_to_dashscope(content, file_name)
                 uploaded_files.append({"file_id": fid, "label": label})
             except Exception as exc:
                 logger.warning("下载/上传%s文件失败: %s, 错误: %s", label, file_path, exc)
@@ -184,7 +186,8 @@ class TextReviewService:
 
         # 构建 Qwen-Long 消息（每个 fileid 单独一条 system message）
         # 如果某个文件解析失败，排除后重试
-        ai_response = await self._call_with_fallback(assembled_prompt, uploaded_files)
+        with tc.track("qwen_long_review"):
+            ai_response = await self._call_with_fallback(assembled_prompt, uploaded_files)
 
         # 8. 解析AI响应
         dimensions = self._parse_ai_response(ai_response)
@@ -195,38 +198,45 @@ class TextReviewService:
         # 提取总体建议
         overall_suggestions = self._extract_overall_suggestions(ai_response)
 
-        # 9. 构建材料版本信息
+        # 9. PPT 视觉评审（如果选择了 text_ppt）
+        ppt_visual_review = None
+        if has_text_ppt and text_ppt:
+            with tc.track("qwen_vl_ppt_visual_review"):
+                ppt_visual_review = await self._ppt_visual_review(text_ppt)
+
+        # 10. 构建材料版本信息
         material_versions: dict = {}
         if has_text_ppt:
             material_versions["text_ppt"] = text_ppt["version"]
         if has_bp:
             material_versions["bp"] = bp["version"]
-        if has_presentation_ppt:
-            material_versions["presentation_ppt"] = presentation_ppt["version"]
 
-        # 10. 存储评审记录到 reviews 表
+        # 11. 存储评审记录到 reviews 表
         now = datetime.now(timezone.utc).isoformat()
         try:
-            review_row = (
-                self._sb.table("reviews")
-                .insert(
-                    {
-                        "project_id": project_id,
-                        "user_id": user_id,
-                        "review_type": "text_review",
-                        "competition": project.competition,
-                        "track": project.track,
-                        "group": project.group,
-                        "stage": stage,
-                        "judge_style": judge_style,
-                        "total_score": float(total_score),
-                        "material_versions": material_versions,
-                        "status": "completed",
-                        "created_at": now,
-                    }
+            with tc.track("supabase_insert_review"):
+                review_row = (
+                    self._sb.table("reviews")
+                    .insert(
+                        {
+                            "project_id": project_id,
+                            "user_id": user_id,
+                            "review_type": "text_review",
+                            "competition": project.competition,
+                            "track": project.track,
+                            "group": project.group,
+                            "stage": stage,
+                            "judge_style": judge_style,
+                            "total_score": float(total_score),
+                            "material_versions": material_versions,
+                            "selected_materials": requested,
+                            "ppt_visual_review": ppt_visual_review,
+                            "status": "completed",
+                            "created_at": now,
+                        }
+                    )
+                    .execute()
                 )
-                .execute()
-            )
         except Exception as exc:
             logger.exception("存储评审记录失败")
             raise HTTPException(
@@ -235,7 +245,7 @@ class TextReviewService:
 
         review_id = review_row.data[0]["id"]
 
-        # 11. 存储评审维度详情到 review_details 表
+        # 12. 存储评审维度详情到 review_details 表
         for dim in dimensions:
             try:
                 self._sb.table("review_details").insert(
@@ -255,7 +265,7 @@ class TextReviewService:
                     exc,
                 )
 
-        # 12. 构建并返回 ReviewResult
+        # 13. 构建并返回 ReviewResult
         created_at_str = review_row.data[0].get("created_at", now)
         if isinstance(created_at_str, str):
             created_at = datetime.fromisoformat(
@@ -263,6 +273,8 @@ class TextReviewService:
             )
         else:
             created_at = created_at_str
+
+        logger.info("TextReviewService.review timing: %s", tc.summary())
 
         return ReviewResult(
             id=review_id,
@@ -272,7 +284,92 @@ class TextReviewService:
             overall_suggestions=overall_suggestions,
             status="completed",
             created_at=created_at,
+            ppt_visual_review=ppt_visual_review,
         )
+
+    # ── PPT 视觉评审 ─────────────────────────────────────────────
+
+    async def _ppt_visual_review(self, text_ppt: dict) -> dict | None:
+        """使用 Qwen-VL-Max 对文本PPT进行视觉评审。
+
+        流程：下载 PPT → 上传 DashScope OSS → 组装 prompt → 调用 Qwen-VL-Max → 解析结果。
+        任何步骤失败时降级返回 None，不影响主评审流程。
+
+        Args:
+            text_ppt: 文本PPT材料记录（含 file_path 等字段）
+
+        Returns:
+            PPTVisualReviewResult 的 dict 表示，或 None（失败时）
+        """
+        try:
+            # 1. 下载 PPT 文件
+            file_path = text_ppt.get("file_path")
+            if not file_path:
+                logger.warning("PPT视觉评审跳过：text_ppt 缺少 file_path")
+                return None
+
+            content = self._sb.storage.from_(STORAGE_BUCKET).download(file_path)
+            file_name = file_path.rsplit("/", 1)[-1]
+
+            # 2. 上传到 DashScope OSS
+            file_id = await upload_file_to_dashscope(content, file_name)
+
+            # 3. 读取 prompt 模板
+            if not _PPT_VISUAL_PROMPT_PATH.is_file():
+                logger.warning("PPT视觉评审跳过：prompt 模板不存在: %s", _PPT_VISUAL_PROMPT_PATH)
+                return None
+            prompt_text = _PPT_VISUAL_PROMPT_PATH.read_text(encoding="utf-8")
+
+            # 4. 组装消息并调用 Qwen-VL-Max
+            messages: list[dict] = [
+                {"role": "system", "content": prompt_text},
+                {"role": "system", "content": f"fileid://{file_id}"},
+                {"role": "user", "content": "请对这份PPT进行视觉评审，按照六个维度逐一评价并输出JSON结果。"},
+            ]
+            ai_response = await call_ai_api(
+                messages, model="qwen-vl-max", multimodal=True
+            )
+
+            # 5. 解析结果
+            result = self._parse_ppt_visual_response(ai_response)
+            return result
+
+        except Exception as exc:
+            logger.error("PPT视觉评审失败（降级处理）: %s", exc)
+            return None
+
+    def _parse_ppt_visual_response(self, ai_response: dict) -> dict | None:
+        """解析 Qwen-VL-Max 返回的 PPT 视觉评审结果。
+
+        Args:
+            ai_response: AI API 返回的完整 JSON 响应
+
+        Returns:
+            PPTVisualReviewResult 结构的 dict，解析失败返回 None
+        """
+        try:
+            content = ai_response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("PPT视觉评审响应结构异常: %s", exc)
+            return None
+
+        parsed = self._extract_json(content)
+        if parsed is None:
+            logger.error("PPT视觉评审无法提取JSON: %s", content[:500])
+            return None
+
+        # 校验 dimensions 字段
+        dimensions = parsed.get("dimensions", [])
+        if not isinstance(dimensions, list) or len(dimensions) == 0:
+            logger.error("PPT视觉评审缺少 dimensions 字段")
+            return None
+
+        overall_comment = parsed.get("overall_comment", "")
+
+        return {
+            "dimensions": dimensions,
+            "overall_comment": overall_comment,
+        }
 
     # ── AI 调用（含文件解析失败容错） ──────────────────────────
 

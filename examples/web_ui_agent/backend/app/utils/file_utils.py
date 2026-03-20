@@ -8,6 +8,7 @@ ALLOWED_EXTENSIONS: dict[str, set[str]] = {
     "text_ppt": {".pptx", ".pdf"},
     "presentation_ppt": {".pptx", ".pdf"},
     "presentation_video": {".mp4", ".webm"},
+    "presentation_audio": {".mp3", ".wav", ".m4a", ".aac"},
 }
 
 # 各材料类型对应的大小限制键（映射到 settings 属性）
@@ -16,6 +17,7 @@ _SIZE_LIMITS: dict[str, str] = {
     "text_ppt": "max_ppt_size",
     "presentation_ppt": "max_ppt_size",
     "presentation_video": "max_video_size",
+    "presentation_audio": "max_video_size",
 }
 
 

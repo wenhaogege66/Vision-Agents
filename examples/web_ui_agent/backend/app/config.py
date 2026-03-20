@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     dashscope_multimodal_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     dashscope_model: str = "qwen-vl-max"
 
+    # Deepgram STT 配置
+    deepgram_api_key: str = ""
+
     # GetStream 配置
     getstream_api_key: str = ""
     getstream_api_secret: str = ""

@@ -13,6 +13,7 @@ import {
   Spin,
   Row,
   Col,
+  Alert,
 } from 'antd';
 import { msg } from '@/utils/messageHolder';
 import {
@@ -24,10 +25,12 @@ import {
   HistoryOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
-import { materialApi } from '@/services/api';
-import type { MaterialUploadResponse, MaterialType } from '@/types';
+import { materialApi, profileApi } from '@/services/api';
+import type { MaterialUploadResponse, MaterialType, ProjectProfile } from '@/types';
+import { useConcurrentState } from '@/hooks/useConcurrentState';
 
 const { Title, Text } = Typography;
 
@@ -79,13 +82,14 @@ export default function MaterialCenter() {
   const { projectId } = useParams<{ projectId: string }>();
   const [materials, setMaterials] = useState<Record<string, MaterialUploadResponse | null>>({});
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState<string | null>(null);
+  const { startOperation, completeOperation, failOperation, getStatus } = useConcurrentState();
   const [versionModal, setVersionModal] = useState<{ open: boolean; type: MaterialType | null; versions: MaterialUploadResponse[] }>({
     open: false,
     type: null,
     versions: [],
   });
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [projectProfile, setProjectProfile] = useState<ProjectProfile | null>(null);
 
   const fetchMaterials = useCallback(async () => {
     if (!projectId) return;
@@ -122,6 +126,18 @@ export default function MaterialCenter() {
     return null;
   };
 
+  const triggerProfileExtract = useCallback(async () => {
+    if (!projectId) return;
+    startOperation('profile_extract');
+    try {
+      const profile = await profileApi.extract(projectId);
+      setProjectProfile(profile);
+      completeOperation('profile_extract');
+    } catch {
+      failOperation('profile_extract', 'AI 项目简介生成失败');
+    }
+  }, [projectId, startOperation, completeOperation, failOperation]);
+
   const handleUpload = async (file: File, config: MaterialConfig) => {
     const error = validateFile(file, config);
     if (error) {
@@ -129,15 +145,20 @@ export default function MaterialCenter() {
       return false;
     }
     if (!projectId) return false;
-    setUploading(config.key);
+    const opId = `upload_${config.key}` as const;
+    startOperation(opId);
     try {
       await materialApi.upload(projectId, config.key, file);
       msg.success(`${config.label} 上传成功`);
+      completeOperation(opId);
       await fetchMaterials();
+      // Auto-trigger AI profile extraction for bp or text_ppt uploads
+      if (config.key === 'bp' || config.key === 'text_ppt') {
+        triggerProfileExtract();
+      }
     } catch {
       msg.error(`${config.label} 上传失败`);
-    } finally {
-      setUploading(null);
+      failOperation(opId, `${config.label} 上传失败`);
     }
     return false;
   };
@@ -227,7 +248,7 @@ export default function MaterialCenter() {
                 <Upload {...uploadProps}>
                   <Button
                     icon={<UploadOutlined />}
-                    loading={uploading === config.key}
+                    loading={getStatus(`upload_${config.key}`) === 'loading'}
                   >
                     {mat ? '更新材料' : '上传材料'}
                   </Button>
@@ -240,6 +261,40 @@ export default function MaterialCenter() {
           );
         })}
       </Row>
+
+      {/* AI 项目简介自动生成状态 */}
+      {getStatus('profile_extract') === 'loading' && (
+        <Card style={{ marginTop: 16 }}>
+          <Spin size="small" style={{ marginRight: 8 }} />
+          <Text>正在生成项目简介...</Text>
+        </Card>
+      )}
+      {getStatus('profile_extract') === 'error' && (
+        <Alert
+          style={{ marginTop: 16 }}
+          type="error"
+          message="AI 项目简介生成失败"
+          action={
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={triggerProfileExtract}
+            >
+              重试
+            </Button>
+          }
+        />
+      )}
+      {projectProfile && getStatus('profile_extract') !== 'loading' && getStatus('profile_extract') !== 'error' && (
+        <Card title="项目简介（AI 生成）" style={{ marginTop: 16 }}>
+          {projectProfile.team_intro && <Text style={{ display: 'block', marginBottom: 4 }}>团队介绍：{projectProfile.team_intro}</Text>}
+          {projectProfile.domain && <Text style={{ display: 'block', marginBottom: 4 }}>所属领域：{projectProfile.domain}</Text>}
+          {projectProfile.startup_status && <Text style={{ display: 'block', marginBottom: 4 }}>创业状态：{projectProfile.startup_status}</Text>}
+          {projectProfile.achievements && <Text style={{ display: 'block', marginBottom: 4 }}>已有成果：{projectProfile.achievements}</Text>}
+          {projectProfile.product_links && <Text style={{ display: 'block', marginBottom: 4 }}>产品链接：{projectProfile.product_links}</Text>}
+          {projectProfile.next_goals && <Text style={{ display: 'block', marginBottom: 4 }}>下一步目标：{projectProfile.next_goals}</Text>}
+        </Card>
+      )}
 
       <Modal
         title={`版本历史 - ${MATERIAL_CONFIGS.find((c) => c.key === versionModal.type)?.label ?? ''}`}

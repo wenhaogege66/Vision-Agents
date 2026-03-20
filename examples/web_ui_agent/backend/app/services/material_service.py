@@ -186,7 +186,7 @@ class MaterialService:
             ) from exc
 
         uploaded_types = {row["material_type"] for row in result.data}
-        all_types = ["bp", "text_ppt", "presentation_ppt", "presentation_video"]
+        all_types = ["bp", "text_ppt", "presentation_ppt", "presentation_video", "presentation_audio"]
 
         status: dict[str, dict] = {}
         for mt in all_types:
@@ -199,11 +199,14 @@ class MaterialService:
             or status["presentation_ppt"]["ready"]
         )
 
-        offline_review_ready = status["presentation_video"]["uploaded"]
+        offline_review_ready = (
+            status["presentation_video"]["uploaded"]
+            or status["presentation_audio"]["uploaded"]
+        )
 
         offline_review_reasons: list[str] = []
-        if not status["presentation_video"]["uploaded"]:
-            offline_review_reasons.append("请先上传路演视频")
+        if not offline_review_ready:
+            offline_review_reasons.append("请先上传路演视频或路演音频")
 
         return {
             **status,
