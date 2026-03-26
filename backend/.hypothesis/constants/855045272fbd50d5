@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/knowledge_service.py
+# hypothesis_version: 6.151.9
+
+['.docx', '.md', '.pdf', '.xlsx', 'bp', 'knowledge', 'presentation', 'presentation_ppt', 'text_ppt', 'utf-8', '不支持的知识库文件格式: %s', '知识库目录不存在: %s', '知识库目录为空: %s']

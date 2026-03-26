@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/utils/ai_utils.py
+# hypothesis_version: 6.151.9
+
+['Authorization', 'Content-Type', 'application/json', 'messages', 'model', 'qwen-vl-max']

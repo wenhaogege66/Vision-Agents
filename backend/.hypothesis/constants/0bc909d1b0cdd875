@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/ppt_convert_service.py
+# hypothesis_version: 6.151.9
+
+[153, 160, 220, 255, 400, 500, 720, 1280, 6858000, 12192000, '...', '/', 'PNG', 'PPT文件不包含任何幻灯片', 'RGB', 'arial.ttf', 'content-type', 'id', 'image/png', 'image_paths', 'materials', 'project_materials', '上传图像失败: %s', '从 Storage 下载文件失败: %s', '更新材料图像路径失败: %s', '解析PPT文件失败: %s']

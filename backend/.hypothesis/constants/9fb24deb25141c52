@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/config.py
+# hypothesis_version: 6.151.9
+
+[8000, 52428800, 524288000, '.env', '0.0.0.0', 'development', 'env_file', 'extra', 'ignore']

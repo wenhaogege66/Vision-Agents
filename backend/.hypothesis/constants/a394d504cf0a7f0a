@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/project_service.py
+# hypothesis_version: 6.151.9
+
+[403, 404, 422, 500, '*', '+00:00', 'Z', 'bp', 'competition', 'created_at', 'current_stage', 'group', 'id', 'is_latest', 'material_type', 'name', 'presentation_ppt', 'presentation_video', 'project_id', 'project_materials', 'projects', 'school_text', 'text_ppt', 'track', 'user_id', '创建项目失败', '无权修改该项目', '无权访问该项目', '更新项目失败', '查询材料状态失败，返回默认值', '查询项目列表失败', '查询项目失败', '没有需要更新的字段', '组别不能为空', '赛事类型不能为空', '赛道不能为空', '项目不存在', '项目名称不能为空', '；']

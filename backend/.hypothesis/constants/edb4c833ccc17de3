@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/utils/file_utils.py
+# hypothesis_version: 6.151.9
+
+[1024, ', ', '.', '.docx', '.mp4', '.pdf', '.pptx', '.webm', 'bp', 'max_ppt_size', 'max_video_size', 'presentation_ppt', 'presentation_video', 'text_ppt']

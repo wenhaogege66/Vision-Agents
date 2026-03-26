@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/routes/reviews.py
+# hypothesis_version: 6.151.9
+
+[0.5, 200, 404, 500, '*', '+00:00', '/text', '/{review_id}', '/{review_id}/export', 'AI评审报告', 'ALIGN', 'BACKGROUND', 'CENTER', 'Content-Disposition', 'GRID', 'Heading3', 'Normal', 'TEXTCOLOR', 'Title', 'Title_CN', 'Z', 'application/pdf', 'completed', 'created_at', 'dimension', 'dimensions', 'id', 'max_score', 'message', 'project_id', 'review_details', 'review_id', 'review_type', 'reviews', 'score', 'status', 'sub_items', 'suggestions', 'total_score', '得分', '查询评审维度详情失败', '查询评审记录列表失败', '查询评审记录失败', '满分', '维度', '评审记录不存在']

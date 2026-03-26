@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/routes/auth.py
+# hypothesis_version: 6.151.9
+
+['/api/auth', '/login', '/me', '/register', 'access_token', 'auth', 'user']

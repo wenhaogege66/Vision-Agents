@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/routes/materials.py
+# hypothesis_version: 6.151.9
+
+['.pptx', '/{material_type}', 'bp', 'detail', 'materials', 'presentation_ppt', 'presentation_video', 'text_ppt']

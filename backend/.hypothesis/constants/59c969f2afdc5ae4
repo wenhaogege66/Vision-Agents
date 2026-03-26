@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/material_service.py
+# hypothesis_version: 6.151.9
+
+[400, 413, 500, '*', '+00:00', 'Z', 'content-type', 'created_at', 'file_name', 'file_path', 'file_size', 'id', 'is_latest', 'material_type', 'materials', 'project_id', 'project_materials', 'unknown', 'version', '上传文件到 Storage 失败', '插入材料记录失败', '更新旧版本 is_latest 失败', '查询当前最大版本号失败', '查询最新材料失败', '查询材料版本列表失败']

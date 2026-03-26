@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/prompt_service.py
+# hypothesis_version: 6.151.9
+
+['---', '.md', ':', 'description', 'name', 'prompts', 'question', 'styles', 'suggestion', 'templates', 'utf-8', '评委风格目录不存在: %s']

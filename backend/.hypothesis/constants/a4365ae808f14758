@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/text_review_service.py
+# hypothesis_version: 6.151.9
+
+[400, 500, 502, 503, '+00:00', 'AI响应中缺少dimensions字段', 'AI响应结构异常: %s', 'AI评审服务暂时不可用，请稍后重试', 'AI评审返回结果无法解析', 'AI评审返回结果格式异常', 'AI评审返回结果缺少评分维度', 'Z', 'bp', 'choices', 'competition', 'completed', 'content', 'created_at', 'dimension', 'dimensions', 'group', 'id', 'image_paths', 'image_url', 'judge_style', 'material_versions', 'materials', 'max_score', 'message', 'overall_suggestions', 'project_id', 'review_details', 'review_id', 'review_type', 'reviews', 'role', 'score', 'stage', 'status', 'strict', 'sub_items', 'suggestions', 'system', 'text', 'text_ppt', 'text_review', 'total_score', 'track', 'type', 'url', 'user', 'user_id', 'version', '{', '}', '存储评审记录失败', '文本评审AI API调用失败: %s', '无法从AI响应中提取JSON: %s', '未知维度', '解析维度评分失败: %s, 错误: %s', '请先上传文本PPT后再发起文本评审']

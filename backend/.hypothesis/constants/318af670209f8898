@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/rule_service.py
+# hypothesis_version: 6.151.9
+
+['* ', '*#- ', '-', '- ', '-*· ', '.', '.docx', '.md', '.pdf', '.xlsx', ':', '[、,，;；]', 'benke_chuangye', 'benke_chuangyi', 'chanye', 'chuangye', 'chuangyi', 'datiao', 'gaojiao', 'gongyi', 'guochuangsai', 'honglv', 'mengya', 'rules', 'rules.docx', 'rules.md', 'rules.pdf', 'rules.xlsx', 'utf-8', 'xiaotiao', 'yanjiusheng_chuangye', 'yanjiusheng_chuangyi', 'zhijiao', '|', '· ', '不支持的规则文件格式: %s', '中国国际大学生创新大赛（国创赛）', '产业命题赛道', '公益组', '创业组', '创意组', '名称', '挑战杯大学生创业计划竞赛（小挑）', '挑战杯大学生课外学术科技作品竞赛（大挑）', '本科创业组', '本科创意组', '研究生创业组', '研究生创意组', '红旅赛道', '维度', '维度名称', '职教赛道', '萌芽赛道', '评审维度', '高教主赛道']

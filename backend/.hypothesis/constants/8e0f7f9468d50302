@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/routes/voices.py
+# hypothesis_version: 6.151.9
+
+[204, '/api/voices', '/clone', '/custom', '/custom/{voice_id}', '/presets', 'voices']

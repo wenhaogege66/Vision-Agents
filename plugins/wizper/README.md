@@ -1,1 +1,0 @@
-Wizper for vision agents

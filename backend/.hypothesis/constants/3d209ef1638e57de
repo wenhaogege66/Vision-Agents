@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/services/auth_service.py
+# hypothesis_version: 6.151.9
+
+[400, 401, 'Token 验证失败: %s', 'access_token', 'display_name', 'email', 'id', 'password', 'profiles', 'user', '无效或过期的认证令牌', '注册失败，请检查邮箱格式或密码强度', '邮箱或密码错误']

@@ -1,0 +1,4 @@
+# file: /Users/wenhao/XLab/Avator/Vision-Agents/examples/web_ui_agent/backend/app/routes/projects.py
+# hypothesis_version: 6.151.9
+
+['/api/projects', '/{project_id}', 'projects']
