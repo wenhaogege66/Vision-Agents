@@ -113,10 +113,11 @@ async def health_check():
 
 
 async def _scan_and_fill_missing():
-    """扫描所有项目，对已有 BP+文本PPT 但缺少简介或问题的项目自动生成。"""
+    """扫描所有项目，对已有 BP+文本PPT 但缺少简介/问题/文本评审的项目自动生成。"""
     from app.models.database import get_supabase
     from app.services.profile_service import ProfileService
     from app.services.defense_service import DefenseService
+    from app.services.text_review_service import TextReviewService
 
     try:
         sb = get_supabase()
@@ -125,17 +126,18 @@ async def _scan_and_fill_missing():
         return
 
     try:
-        # 获取所有项目
-        projects = sb.table("projects").select("id").execute().data or []
+        projects = sb.table("projects").select("id, user_id").execute().data or []
     except Exception as exc:
         logger.warning("扫描任务查询项目列表失败: %s", exc)
         return
 
     profile_svc = ProfileService(sb)
     defense_svc = DefenseService(sb)
+    text_review_svc = TextReviewService(sb)
 
     for proj in projects:
         pid = proj["id"]
+        uid = proj.get("user_id", "system")
         try:
             # 检查是否有 BP 和文本 PPT
             bp = sb.table("project_materials").select("id").eq("project_id", pid).eq("material_type", "bp").eq("is_latest", True).limit(1).execute()
@@ -147,13 +149,13 @@ async def _scan_and_fill_missing():
             if not (has_bp and has_text_ppt):
                 continue
 
-            # 检查简介
+            # ── 简介检查 ──
             profile_result = sb.table("project_profiles").select("id, team_intro, domain").eq("project_id", pid).limit(1).execute()
             has_profile = bool(profile_result.data) and any(
                 profile_result.data[0].get(f) for f in ["team_intro", "domain"]
             )
 
-            # 检查问题
+            # ── 问题检查 ──
             questions = sb.table("defense_questions").select("id").eq("project_id", pid).limit(1).execute()
             has_questions = bool(questions.data)
 
@@ -162,11 +164,55 @@ async def _scan_and_fill_missing():
                 await profile_svc.extract_profile(pid)
                 logger.info("扫描：项目 %s 简介和问题生成完成", pid)
             elif not has_questions:
-                # 有简介但没问题，单独生成问题
                 logger.info("扫描：项目 %s 缺少问题，自动生成中…", pid)
                 profile_data = profile_result.data[0]
                 await defense_svc.generate_questions(pid, profile_data)
                 logger.info("扫描：项目 %s 问题生成完成", pid)
+
+            # ── 文本评审检查：如果从未有过文本评审，自动触发一次 ──
+            text_reviews = sb.table("reviews").select("id").eq("project_id", pid).eq("review_type", "text_review").limit(1).execute()
+            has_text_review = bool(text_reviews.data)
+
+            if not has_text_review:
+                logger.info("扫描：项目 %s 缺少文本评审，自动触发中…", pid)
+                # 先插入一条 pending 记录
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc).isoformat()
+                # 获取项目信息用于 pending 记录
+                proj_info = sb.table("projects").select("competition, track, \"group\"").eq("id", pid).limit(1).execute()
+                proj_data = proj_info.data[0] if proj_info.data else {}
+                pending_row = sb.table("reviews").insert({
+                    "project_id": pid,
+                    "user_id": uid,
+                    "review_type": "text_review",
+                    "competition": proj_data.get("competition", ""),
+                    "track": proj_data.get("track", ""),
+                    "group": proj_data.get("group", ""),
+                    "stage": "school_text",
+                    "status": "pending",
+                    "auto_triggered": True,
+                    "total_score": 0,
+                    "created_at": now,
+                }).execute()
+                pending_id = pending_row.data[0]["id"] if pending_row.data else None
+                try:
+                    await text_review_svc.review(
+                        project_id=pid,
+                        user_id=uid,
+                        stage="school_text",
+                        judge_style="strict",
+                        material_types=["text_ppt", "bp"],
+                        auto_triggered=True,
+                    )
+                    # 删除 pending 记录（review 方法已插入 completed 记录）
+                    if pending_id:
+                        sb.table("reviews").delete().eq("id", pending_id).execute()
+                    logger.info("扫描：项目 %s 文本评审完成", pid)
+                except Exception as exc:
+                    # 将 pending 记录标记为 failed
+                    if pending_id:
+                        sb.table("reviews").update({"status": "failed"}).eq("id", pending_id).execute()
+                    logger.warning("扫描：项目 %s 文本评审失败: %s", pid, exc)
 
         except Exception as exc:
             logger.warning("扫描：项目 %s 自动生成失败: %s", pid, exc)

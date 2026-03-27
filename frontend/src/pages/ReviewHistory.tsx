@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import BackButton from '@/components/BackButton';
-import { Table, Tag, Typography, Spin } from 'antd';
+import { Table, Tag, Typography, Spin, Space, Button } from 'antd';
+import { RobotOutlined, SyncOutlined, FileTextOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { msg } from '@/utils/messageHolder';
 import { reviewApi } from '@/services/api';
 import type { ReviewResult } from '@/types';
@@ -39,27 +40,54 @@ export default function ReviewHistory() {
     });
   }, [projectId]);
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}><Spin size="large" tip="加载中…" /></div>;
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}><Spin size="large" description="加载中…" /></div>;
 
   return (
     <div style={{ padding: 24 }}>
       <BackButton to={`/projects/${projectId}`} label="返回项目仪表盘" />
-      <Title level={3}>评审历史</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={3} style={{ margin: 0 }}>评审历史</Title>
+        <Space>
+          <Button
+            icon={<FileTextOutlined />}
+            onClick={() => navigate(`/projects/${projectId}/text-review`)}
+          >
+            文本评审
+          </Button>
+          <Button
+            icon={<VideoCameraOutlined />}
+            onClick={() => navigate(`/projects/${projectId}/offline-review`)}
+          >
+            离线路演
+          </Button>
+        </Space>
+      </div>
       <Table
         dataSource={reviews}
         rowKey="id"
         onRow={(record) => ({
-          onClick: () => navigate(`/projects/${projectId}/reviews/${record.id}`),
-          style: { cursor: 'pointer' },
+          onClick: () => {
+            if (record.status !== 'pending') {
+              navigate(`/projects/${projectId}/reviews/${record.id}`);
+            }
+          },
+          style: { cursor: record.status === 'pending' ? 'default' : 'pointer' },
         })}
         columns={[
           {
             title: '类型',
             dataIndex: 'review_type',
-            width: 120,
-            render: (t: string) => {
+            width: 160,
+            render: (t: string, record: ReviewResult) => {
               const cfg = TYPE_LABELS[t] ?? { text: t, color: 'default' };
-              return <Tag color={cfg.color}>{cfg.text}</Tag>;
+              return (
+                <Space size={4}>
+                  <Tag color={cfg.color}>{cfg.text}</Tag>
+                  {record.auto_triggered && (
+                    <Tag icon={<RobotOutlined />} color="geekblue">自动</Tag>
+                  )}
+                </Space>
+              );
             },
           },
           {
@@ -77,17 +105,21 @@ export default function ReviewHistory() {
             title: '总分',
             dataIndex: 'total_score',
             width: 100,
-            render: (s: number) => s?.toFixed(1) ?? '-',
+            render: (s: number, record: ReviewResult) => {
+              if (record.status === 'pending') return '—';
+              return s?.toFixed(1) ?? '-';
+            },
           },
           {
             title: '状态',
             dataIndex: 'status',
-            width: 100,
-            render: (s: string) => (
-              <Tag color={s === 'completed' ? 'success' : s === 'failed' ? 'error' : 'processing'}>
-                {s === 'completed' ? '已完成' : s === 'failed' ? '失败' : '处理中'}
-              </Tag>
-            ),
+            width: 120,
+            render: (s: string) => {
+              if (s === 'completed') return <Tag color="success">已完成</Tag>;
+              if (s === 'failed') return <Tag color="error">失败</Tag>;
+              if (s === 'pending') return <Tag icon={<SyncOutlined spin />} color="processing">进行中</Tag>;
+              return <Tag color="default">{s}</Tag>;
+            },
           },
           {
             title: '时间',

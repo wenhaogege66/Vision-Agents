@@ -69,6 +69,7 @@ class OfflineReviewService:
         user_id: str,
         stage: str,
         judge_style: str = "strict",
+        auto_triggered: bool = False,
     ) -> ReviewResult:
         """执行离线路演评审完整流程。
 
@@ -283,6 +284,7 @@ class OfflineReviewService:
                             "stt_transcript": stt_transcript,
                             "ppt_visual_review": ppt_visual_review,
                             "presenter_evaluation": presenter_evaluation,
+                            "auto_triggered": auto_triggered,
                             "status": "completed",
                             "created_at": now,
                         }

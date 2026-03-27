@@ -92,7 +92,9 @@ export default function TextReviewPanel({ result }: Props) {
       title: '评价',
       dataIndex: 'comment',
       key: 'comment',
-      ellipsis: !isCompact,
+      render: (text: string) => (
+        <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</Text>
+      ),
     },
   ];
 
@@ -139,7 +141,7 @@ export default function TextReviewPanel({ result }: Props) {
               <Descriptions
                 title="子项评价"
                 column={1}
-                size={isCompact ? 'small' : 'default'}
+                size={isCompact ? 'small' : 'large'}
                 bordered={!isCompact}
                 styles={{
                   label: { width: isCompact ? 80 : 140, fontWeight: 500 },

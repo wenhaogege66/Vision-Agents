@@ -251,6 +251,11 @@ export const reviewApi = {
       judge_style: judgeStyle,
     }, { timeout: 360_000 }),
 
+  pending: (projectId: string) =>
+    api.get<Array<{ id: string; review_type: string; status: string; auto_triggered: boolean; created_at: string }>>(
+      `/projects/${projectId}/reviews/pending`,
+    ).then(r => r.data),
+
   list: (projectId: string) =>
     api.get<ReviewResult[]>(`/projects/${projectId}/reviews`),
 

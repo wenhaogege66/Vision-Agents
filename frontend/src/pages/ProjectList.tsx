@@ -179,7 +179,7 @@ export default function ProjectList() {
       {/* Content */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300, width: '100%' }}>
-          <Spin size="large" tip="加载中…" />
+          <Spin size="large" description="加载中…" />
         </div>
       ) : projects.length === 0 ? (
         <Card style={{ borderRadius: 12, textAlign: 'center', padding: '48px 0' }}>

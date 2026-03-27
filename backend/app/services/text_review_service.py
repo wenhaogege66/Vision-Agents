@@ -59,6 +59,7 @@ class TextReviewService:
         stage: str,
         judge_style: str = "strict",
         material_types: list[str] | None = None,
+        auto_triggered: bool = False,
     ) -> ReviewResult:
         """执行文本评审完整流程。
 
@@ -231,6 +232,7 @@ class TextReviewService:
                             "material_versions": material_versions,
                             "selected_materials": requested,
                             "ppt_visual_review": ppt_visual_review,
+                            "auto_triggered": auto_triggered,
                             "status": "completed",
                             "created_at": now,
                         }

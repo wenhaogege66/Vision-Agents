@@ -55,6 +55,7 @@ async def create_text_review(
         stage=body.stage,
         judge_style=body.judge_style,
         material_types=body.material_types,
+        auto_triggered=body.auto_triggered,
     )
 
 
@@ -74,10 +75,33 @@ async def create_offline_review(
         user_id=user.id,
         stage=body.stage,
         judge_style=body.judge_style,
+        auto_triggered=body.auto_triggered,
     )
 
 
 # ── GET /api/projects/{project_id}/reviews ────────────────────
+
+
+@router.get("/pending")
+async def get_pending_reviews(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase),
+):
+    """获取项目正在进行中的评审（status = 'pending'）"""
+    try:
+        result = (
+            supabase.table("reviews")
+            .select("id, review_type, status, auto_triggered, created_at")
+            .eq("project_id", project_id)
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data
+    except Exception as exc:
+        logger.exception("查询进行中评审失败")
+        raise HTTPException(status_code=500, detail=f"查询进行中评审失败: {exc}") from exc
 
 
 @router.get("")
@@ -90,7 +114,7 @@ async def list_reviews(
     try:
         result = (
             supabase.table("reviews")
-            .select("id, review_type, total_score, stage, judge_style, status, created_at, selected_materials")
+            .select("id, review_type, total_score, stage, judge_style, status, auto_triggered, created_at, selected_materials")
             .eq("project_id", project_id)
             .order("created_at", desc=True)
             .execute()

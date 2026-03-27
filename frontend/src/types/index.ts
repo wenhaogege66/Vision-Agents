@@ -61,6 +61,7 @@ export interface ReviewResult {
   selected_materials?: string[];
   ppt_visual_review?: PPTVisualReviewResult;
   presenter_evaluation?: PresenterEvaluation;
+  auto_triggered?: boolean;
 }
 
 export interface PPTVisualReviewResult {

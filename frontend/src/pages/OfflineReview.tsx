@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Button, Card, Flex, Spin, Typography, Select, Tag } from 'antd';
+import { useMemo, useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Alert, Button, Card, Flex, Spin, Typography, Select, Tag } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined, SoundOutlined, VideoCameraOutlined, HistoryOutlined, RobotOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import AIProcessingCard from '@/components/AIProcessingCard';
@@ -40,14 +40,33 @@ function getAuxMaterialState(
 
 export default function OfflineReview() {
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const [judgeStyle, setJudgeStyle] = useState('strict');
   const [stage, setStage] = useState<CompetitionStage>('school_presentation');
   const { startOperation, completeOperation, failOperation, getStatus } = useConcurrentState();
   const [result, setResult] = useState<ReviewResult | null>(null);
 
+  // Pending review check
+  const [pendingReview, setPendingReview] = useState<{ id: string; auto_triggered: boolean; created_at: string } | null>(null);
+  const [checkingPending, setCheckingPending] = useState(true);
+
   const loading = getStatus('offline_review') === 'loading';
 
   const { status, loading: statusLoading } = useReadinessChecker(projectId ?? '');
+
+  // Check for pending offline reviews on mount
+  useEffect(() => {
+    if (!projectId) return;
+    reviewApi.pending(projectId)
+      .then((pending) => {
+        const offlinePending = pending.find((r) => r.review_type === 'offline_presentation');
+        if (offlinePending) {
+          setPendingReview({ id: offlinePending.id, auto_triggered: offlinePending.auto_triggered, created_at: offlinePending.created_at });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCheckingPending(false));
+  }, [projectId]);
 
   // Whether at least one media source (video or audio) is uploaded.
   const videoReady = status?.presentation_video?.uploaded ?? false;
@@ -91,6 +110,35 @@ export default function OfflineReview() {
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         基于已上传的路演视频或路演音频和路演PPT进行AI评审，生成综合评审报告（演讲表现、PPT内容、综合评分、改进建议）。
       </Text>
+
+      {/* Pending review alert */}
+      {!checkingPending && pendingReview && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<RobotOutlined />}
+          style={{ marginBottom: 24 }}
+          message={
+            <span>
+              当前有一项离线路演评审正在进行中
+              {pendingReview.auto_triggered && <Tag color="blue" style={{ marginLeft: 8 }}>系统自动触发</Tag>}
+            </span>
+          }
+          description={
+            <span>
+              开始于 {new Date(pendingReview.created_at).toLocaleString('zh-CN')}，请等待评审完成后再发起新的评审。
+              <Button
+                type="link"
+                icon={<HistoryOutlined />}
+                onClick={() => navigate(`/projects/${projectId}/reviews`)}
+                style={{ padding: '0 4px' }}
+              >
+                查看评审历史
+              </Button>
+            </span>
+          }
+        />
+      )}
 
       {/* Media material status (video / audio) — at least one required */}
       <Card
@@ -173,10 +221,10 @@ export default function OfflineReview() {
             icon={<CloudUploadOutlined />}
             onClick={handleReview}
             loading={loading}
-            disabled={!mediaReady || loading}
+            disabled={!mediaReady || loading || !!pendingReview}
             size="large"
           >
-            发起离线路演评审
+            {pendingReview ? '评审进行中，请稍候…' : '发起离线路演评审'}
           </Button>
           {!statusLoading && !mediaReady && (
             <Text type="warning">请先上传路演视频或路演音频</Text>

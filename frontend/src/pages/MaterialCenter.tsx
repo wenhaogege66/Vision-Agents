@@ -214,7 +214,7 @@ export default function MaterialCenter() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}>
-        <Spin size="large" tip="加载中…" />
+        <Spin size="large" description="加载中…" />
       </div>
     );
   }

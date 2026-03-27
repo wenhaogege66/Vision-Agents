@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Button, Card, Checkbox, Spin, Typography, Flex, Select, Tag } from 'antd';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Alert, Button, Card, Checkbox, Spin, Typography, Flex, Select, Tag } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { SendOutlined } from '@ant-design/icons';
+import { SendOutlined, HistoryOutlined, RobotOutlined } from '@ant-design/icons';
 import JudgeStyleSelector from '@/components/JudgeStyleSelector';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import AIProcessingCard from '@/components/AIProcessingCard';
@@ -39,15 +39,34 @@ function getMaterialState(
 
 export default function TextReview() {
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const [judgeStyle, setJudgeStyle] = useState('strict');
   const [stage, setStage] = useState<CompetitionStage>('school_text');
   const { startOperation, completeOperation, failOperation, getStatus } = useConcurrentState();
   const [result, setResult] = useState<ReviewResult | null>(null);
   const [selectedMaterials, setSelectedMaterials] = useState<TextMaterialType[]>([]);
 
+  // Pending review check
+  const [pendingReview, setPendingReview] = useState<{ id: string; auto_triggered: boolean; created_at: string } | null>(null);
+  const [checkingPending, setCheckingPending] = useState(true);
+
   const loading = getStatus('text_review') === 'loading';
 
   const { status, loading: statusLoading } = useReadinessChecker(projectId ?? '');
+
+  // Check for pending text reviews on mount
+  useEffect(() => {
+    if (!projectId) return;
+    reviewApi.pending(projectId)
+      .then((pending) => {
+        const textPending = pending.find((r) => r.review_type === 'text_review');
+        if (textPending) {
+          setPendingReview({ id: textPending.id, auto_triggered: textPending.auto_triggered, created_at: textPending.created_at });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCheckingPending(false));
+  }, [projectId]);
 
   // Derive per-material state from the readiness status.
   const materialStates = useMemo(() => {
@@ -66,7 +85,7 @@ export default function TextReview() {
     setSelectedMaterials(readyTypes as TextMaterialType[]);
   }, [materialStates]);
 
-  const canReview = selectedMaterials.length > 0 && !loading;
+  const canReview = selectedMaterials.length > 0 && !loading && !pendingReview;
 
   const handleCheckChange = (type: TextMaterialType, checked: boolean) => {
     setSelectedMaterials((prev) =>
@@ -97,9 +116,46 @@ export default function TextReview() {
       <BackButton to={`/projects/${projectId}`} label="返回项目仪表盘" />
 
       <Title level={3}>AI文本评审</Title>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        基于文本PPT和BP，AI将按照评审规则进行多维度评分和建议。
-      </Text>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Text type="secondary">
+          基于文本PPT和BP，AI将按照评审规则进行多维度评分和建议。
+        </Text>
+        <Button
+          icon={<HistoryOutlined />}
+          onClick={() => navigate(`/projects/${projectId}/reviews`)}
+        >
+          评审历史
+        </Button>
+      </div>
+
+      {/* Pending review alert */}
+      {!checkingPending && pendingReview && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<RobotOutlined />}
+          style={{ marginBottom: 24 }}
+          message={
+            <span>
+              当前有一项文本评审正在进行中
+              {pendingReview.auto_triggered && <Tag color="blue" style={{ marginLeft: 8 }}>系统自动触发</Tag>}
+            </span>
+          }
+          description={
+            <span>
+              开始于 {new Date(pendingReview.created_at).toLocaleString('zh-CN')}，请等待评审完成后再发起新的评审。
+              <Button
+                type="link"
+                icon={<HistoryOutlined />}
+                onClick={() => navigate(`/projects/${projectId}/reviews`)}
+                style={{ padding: '0 4px' }}
+              >
+                查看评审历史
+              </Button>
+            </span>
+          }
+        />
+      )}
 
       {/* Material selection area */}
       <Card
@@ -161,7 +217,7 @@ export default function TextReview() {
             disabled={!canReview}
             size="large"
           >
-            发起文本评审
+            {pendingReview ? '评审进行中，请稍候…' : '发起文本评审'}
           </Button>
         </Flex>
       </Card>

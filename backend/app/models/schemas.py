@@ -52,6 +52,7 @@ class ReviewRequest(BaseModel):
     stage: str  # 当前比赛阶段
     judge_style: str = "strict"  # 评委风格: strict, gentle, academic
     material_types: list[str] | None = None  # 文本评审时指定使用的材料类型列表
+    auto_triggered: bool = False  # 是否由系统自动触发
 
 
 class DimensionScore(BaseModel):

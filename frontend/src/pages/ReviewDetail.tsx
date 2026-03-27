@@ -12,7 +12,7 @@ import {
   Typography,
 } from 'antd';
 import { msg } from '@/utils/messageHolder';
-import { DownloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, RobotOutlined } from '@ant-design/icons';
 import TextReviewPanel from '@/components/TextReviewPanel';
 import { reviewApi } from '@/services/api';
 import type { ReviewResult } from '@/types';
@@ -63,14 +63,19 @@ export default function ReviewDetail() {
     }
   };
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}><Spin size="large" tip="加载中…" /></div>;
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}><Spin size="large" description="加载中…" /></div>;
   if (!result) return <Title level={4}>评审记录不存在</Title>;
 
   return (
     <div style={{ padding: 24 }}>
       <BackButton to={`/projects/${projectId}/reviews`} label="返回评审历史" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>评审详情</Title>
+        <Space>
+          <Title level={3} style={{ margin: 0 }}>评审详情</Title>
+          {result.auto_triggered && (
+            <Tag icon={<RobotOutlined />} color="geekblue">系统自动触发</Tag>
+          )}
+        </Space>
         <Button icon={<DownloadOutlined />} onClick={handleExport} loading={exporting}>
           导出PDF
         </Button>

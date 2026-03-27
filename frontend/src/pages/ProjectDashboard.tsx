@@ -195,7 +195,7 @@ export default function ProjectDashboard() {
   if (loading || !project) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}>
-        <Spin size="large" tip="加载中…" />
+        <Spin size="large" description="加载中…" />
       </div>
     );
   }
