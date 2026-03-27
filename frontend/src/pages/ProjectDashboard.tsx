@@ -37,6 +37,7 @@ import api, { projectApi, profileApi, tagApi } from '@/services/api';
 import { useReadinessChecker } from '@/hooks/useReadinessChecker';
 import { useLabelResolver } from '@/hooks/useLabelResolver';
 import ReviewSelectionDialog from '@/components/ReviewSelectionDialog';
+import DefenseQuestionManager from '@/components/DefenseQuestionManager';
 import type { ProjectResponse, ProjectProfile, CompetitionStage, StageConfig, TagInfo } from '@/types';
 import { STAGE_LABELS } from '@/types';
 
@@ -73,6 +74,7 @@ export default function ProjectDashboard() {
   const [profileDraft, setProfileDraft] = useState<Partial<ProjectProfile>>({});
   const [extracting, setExtracting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [defenseQuestionCount, setDefenseQuestionCount] = useState(0);
 
   const { status: materialStatus, loading: statusLoading } = useReadinessChecker(id ?? '');
   const { resolve } = useLabelResolver();
@@ -183,11 +185,14 @@ export default function ProjectDashboard() {
   const offlineReviewReady = materialStatus?.offline_review_ready ?? false;
 
   /** Build a tooltip string for a not-ready review card. */
-  const getNotReadyTooltip = (type: 'text' | 'offline'): string => {
+  const getNotReadyTooltip = (type: 'text' | 'offline' | 'defense'): string => {
     if (statusLoading) return '正在检查材料状态…';
     if (!materialStatus) return '材料状态未知';
     if (type === 'text') {
       return '请先上传至少一种评审材料（BP、文本PPT或路演PPT）';
+    }
+    if (type === 'defense') {
+      return '请先添加至少一个评委问题';
     }
     return materialStatus.offline_review_reasons.length > 0
       ? materialStatus.offline_review_reasons.join('；')
@@ -245,6 +250,13 @@ export default function ProjectDashboard() {
       color: '#6d28d9',
     },
     {
+      title: '数字人问辩',
+      desc: 'AI数字人评委模拟问辩',
+      icon: <RobotOutlined style={{ fontSize: 28 }} />,
+      path: `/projects/${id}/defense`,
+      color: '#059669',
+    },
+    {
       title: '评审历史',
       desc: '查看所有历史评审记录',
       icon: <HistoryOutlined style={{ fontSize: 28 }} />,
@@ -257,6 +269,7 @@ export default function ProjectDashboard() {
   const getCardReadiness = (title: string): { isReview: boolean; ready: boolean } => {
     if (title === '文本评审') return { isReview: true, ready: textReviewReady };
     if (title === '离线评审') return { isReview: true, ready: offlineReviewReady };
+    if (title === '数字人问辩') return { isReview: true, ready: defenseQuestionCount > 0 };
     return { isReview: false, ready: true };
   };
 
@@ -557,6 +570,18 @@ export default function ProjectDashboard() {
         ) : null}
       </Card>
 
+      {/* Defense questions manager */}
+      <Card
+        title="评委预定义问题"
+        style={{ borderRadius: 12, marginBottom: 24 }}
+        styles={{ body: { padding: '20px 24px' } }}
+      >
+        <DefenseQuestionManager
+          projectId={id ?? ''}
+          onQuestionsChange={setDefenseQuestionCount}
+        />
+      </Card>
+
       {/* Quick actions */}
       <Title level={5} style={{ color: '#1a365d', marginBottom: 16 }}>
         快捷操作
@@ -565,13 +590,15 @@ export default function ProjectDashboard() {
         {actions.map((a) => {
           const { isReview, ready } = getCardReadiness(a.title);
           const greyedOut = isReview && !ready;
-          const tooltipType = a.title === '文本评审' ? 'text' : 'offline';
+          const tooltipType = a.title === '文本评审' ? 'text' : a.title === '数字人问辩' ? 'defense' : 'offline';
 
           const cardContent = (
             <Card
               hoverable={!greyedOut}
               onClick={() => {
-                if (isReview) {
+                if (a.title === '数字人问辩') {
+                  if (defenseQuestionCount > 0) navigate(a.path);
+                } else if (isReview) {
                   handleReviewCardClick();
                 } else {
                   navigate(a.path);

@@ -14,6 +14,7 @@ SUPPORTED_MIME_TYPES = {
     "audio/wav",
     "audio/x-m4a",
     "audio/aac",
+    "audio/webm",
 }
 
 DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"

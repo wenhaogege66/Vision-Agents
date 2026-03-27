@@ -76,6 +76,7 @@ async def generic_exception_handler(_request: Request, exc: Exception) -> JSONRe
 
 
 from app.routes.auth import router as auth_router
+from app.routes.defense import router as defense_router
 from app.routes.competitions import name_mappings_router, router as competitions_router
 from app.routes.judge_styles import router as judge_styles_router
 from app.routes.live_presentation import router as live_presentation_router
@@ -87,6 +88,7 @@ from app.routes.tags import tag_router, project_tag_router
 from app.routes.voices import router as voices_router
 
 app.include_router(auth_router)
+app.include_router(defense_router)
 app.include_router(competitions_router)
 app.include_router(name_mappings_router)
 app.include_router(judge_styles_router)

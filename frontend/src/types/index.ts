@@ -278,3 +278,25 @@ export interface StageConfig {
   stage: string;
   stage_date: string | null;
 }
+
+// ── 数字人问辩相关 ────────────────────────────────────────────
+
+export interface DefenseQuestion {
+  id: string;
+  project_id: string;
+  content: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DefenseRecord {
+  id: string;
+  project_id: string;
+  questions_snapshot: Array<{ content: string; sort_order: number }>;
+  user_answer_text: string | null;
+  ai_feedback_text: string | null;
+  answer_duration: number;
+  status: 'completed' | 'failed';
+  created_at: string;
+}

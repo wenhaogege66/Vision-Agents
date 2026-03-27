@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     getstream_api_key: str = ""
     getstream_api_secret: str = ""
 
+    # HeyGen 数字人配置
+    heygen_api_key: str = ""
+    heygen_avatar_id: str = "80d4afa941c243beb0a1116c95ea48ee"
+
     # 应用配置
     app_env: str = "development"
     app_debug: bool = True

@@ -345,3 +345,37 @@ export const tagApi = {
   getProjectTags: (projectId: string) =>
     api.get<TagInfo[]>(`/projects/${projectId}/tags`).then(res => res.data),
 };
+
+// ── 数字人问辩 ───────────────────────────────────────────────
+
+import type { DefenseQuestion, DefenseRecord } from '@/types';
+
+export const defenseApi = {
+  getToken: (projectId: string) =>
+    api.post<{ token: string }>(`/projects/${projectId}/defense/token`).then(r => r.data),
+
+  listQuestions: (projectId: string) =>
+    api.get<DefenseQuestion[]>(`/projects/${projectId}/defense/questions`).then(r => r.data),
+
+  createQuestion: (projectId: string, content: string) =>
+    api.post<DefenseQuestion>(`/projects/${projectId}/defense/questions`, { content }).then(r => r.data),
+
+  updateQuestion: (projectId: string, questionId: string, content: string) =>
+    api.put<DefenseQuestion>(`/projects/${projectId}/defense/questions/${questionId}`, { content }).then(r => r.data),
+
+  deleteQuestion: (projectId: string, questionId: string) =>
+    api.delete(`/projects/${projectId}/defense/questions/${questionId}`),
+
+  submitAnswer: (projectId: string, audio: Blob, answerDuration: number) => {
+    const form = new FormData();
+    form.append('audio', audio, 'answer.webm');
+    form.append('answer_duration', String(answerDuration));
+    return api.post<DefenseRecord>(`/projects/${projectId}/defense/submit-answer`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120_000,
+    }).then(r => r.data);
+  },
+
+  listRecords: (projectId: string) =>
+    api.get<DefenseRecord[]>(`/projects/${projectId}/defense/records`).then(r => r.data),
+};

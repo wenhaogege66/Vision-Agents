@@ -19,6 +19,7 @@ import ReviewHistory from '@/pages/ReviewHistory';
 import ReviewDetail from '@/pages/ReviewDetail';
 import LivePresentation from '@/pages/LivePresentation';
 import OfflineReview from '@/pages/OfflineReview';
+import DigitalDefense from '@/pages/DigitalDefense';
 
 export default function App() {
   return (
@@ -70,6 +71,7 @@ function AppInner() {
               <Route path="projects/:projectId/reviews/:reviewId" element={<ReviewDetail />} />
               <Route path="projects/:projectId/live" element={<LivePresentation />} />
               <Route path="projects/:projectId/offline-review" element={<OfflineReview />} />
+              <Route path="projects/:projectId/defense" element={<DigitalDefense />} />
             </Route>
 
             <Route path="live/join/:shareToken" element={<ShareJoinPage />} />

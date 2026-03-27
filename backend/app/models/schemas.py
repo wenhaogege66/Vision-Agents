@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── 评审规则相关 ──────────────────────────────────────────────
@@ -377,3 +377,36 @@ class StageConfigResponse(BaseModel):
 
     stage: str
     stage_date: str | None  # "YYYY-MM-DD" 或 None
+
+
+# ── 数字人问辩相关 ────────────────────────────────────────────
+
+
+class DefenseQuestionCreate(BaseModel):
+    """创建/更新预定义问题的请求体"""
+
+    content: str = Field(..., min_length=1, max_length=40)  # 最长 40 字
+
+
+class DefenseQuestionResponse(BaseModel):
+    """预定义问题响应"""
+
+    id: str
+    project_id: str
+    content: str
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DefenseRecordResponse(BaseModel):
+    """问辩记录响应"""
+
+    id: str
+    project_id: str
+    questions_snapshot: list[dict]
+    user_answer_text: str | None
+    ai_feedback_text: str | None
+    answer_duration: int
+    status: str
+    created_at: datetime

@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from supabase import Client
 
 from app.services.material_service import MaterialService
+from app.services.defense_service import DefenseService
 from app.utils.ai_utils import FileParsingError, call_ai_api
 from app.utils.dashscope_file import upload_file_to_dashscope
 
@@ -112,7 +113,17 @@ class ProfileService:
             logger.exception("保存项目简介失败")
             raise HTTPException(status_code=500, detail=f"保存项目简介失败: {exc}") from exc
 
-        return result.data[0]
+        saved_profile = result.data[0]
+
+        # 自动生成评委预定义问题（失败不影响简介提取）
+        try:
+            defense_svc = DefenseService(self._sb)
+            await defense_svc.generate_questions(project_id, saved_profile)
+            logger.info("项目 %s 的评委问题自动生成成功", project_id)
+        except Exception as exc:
+            logger.warning("自动生成评委问题失败（不影响简介提取）: %s", exc)
+
+        return saved_profile
 
     async def _call_with_fallback(self, uploaded_files: list[dict]) -> dict:
         """调用 AI API，如果某个文件解析失败则排除后重试。"""
