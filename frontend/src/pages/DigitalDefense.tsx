@@ -6,23 +6,23 @@ import {
   InputNumber,
   Typography,
   Space,
-  List,
   Tag,
   Spin,
   Empty,
   Result,
+  Radio,
+  Alert,
+  Progress,
 } from 'antd';
 import {
   SoundOutlined,
   AudioOutlined,
   RobotOutlined,
   ClockCircleOutlined,
+  VideoCameraOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
-import StreamingAvatar, {
-  AvatarQuality,
-  StreamingEvents,
-  TaskType,
-} from '@heygen/streaming-avatar';
+import { LiveAvatarSession, SessionEvent, SessionState, AgentEventsEnum } from '@heygen/liveavatar-web-sdk';
 import BackButton from '@/components/BackButton';
 import AudioWaveform from '@/components/AudioWaveform';
 import { defenseApi, projectApi } from '@/services/api';
@@ -31,32 +31,32 @@ import type { DefenseRecord } from '@/types';
 
 const { Title, Text, Paragraph } = Typography;
 
+type AvatarProvider = 'liveavatar' | 'heygen';
 type Phase = 'idle' | 'loading' | 'speaking' | 'recording' | 'processing' | 'feedback' | 'done';
 
 const ORDINALS = ['第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十'];
 
-/** Estimate speech duration for Chinese text (~5 chars/sec) + 2s buffer */
-function estimateSpeechDuration(text: string): number {
-  return Math.ceil(text.length / 5) * 1000 + 2000;
-}
-
 function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+}
+
+function buildSpeechText(projectName: string, questions: Array<{ content: string; sort_order: number }>): string {
+  const sorted = [...questions].sort((a, b) => a.sort_order - b.sort_order);
+  const parts = sorted.map((q, i) => `${ORDINALS[i] ?? `第${i + 1}`}，${q.content}`);
+  return `你好，我是数字人评委，对于你们的${projectName}项目，我有以下${sorted.length}个问题：${parts.join('；')}`;
 }
 
 export default function DigitalDefense() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
 
-  // Core state machine
+  // Provider selection
+  const [provider, setProvider] = useState<AvatarProvider>('liveavatar');
+
+  // Core state
   const [phase, setPhase] = useState<Phase>('idle');
-  const [avatarReady, setAvatarReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [answerDuration, setAnswerDuration] = useState(30);
   const [records, setRecords] = useState<DefenseRecord[]>([]);
@@ -64,146 +64,69 @@ export default function DigitalDefense() {
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Refs for SDK and media
-  const avatarRef = useRef<StreamingAvatar | null>(null);
+  // HeyGen video mode state
+  const [heygenVideoUrl, setHeygenVideoUrl] = useState<string | null>(null);
+  const [heygenPolling, setHeygenPolling] = useState(false);
+  const [heygenProgress, setHeygenProgress] = useState(0);
+
+  // LiveAvatar streaming mode state
+  const sessionRef = useRef<LiveAvatarSession | null>(null);
+  const [liveAvatarReady, setLiveAvatarReady] = useState(false);
+
+  // Media refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const speakTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Audio stream for waveform visualization
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
-  // ── Load project name + records on mount ──────────────────────
+  // ── Load data ─────────────────────────────────────────────
   const loadRecords = useCallback(async () => {
     if (!projectId) return;
     try {
       const data = await defenseApi.listRecords(projectId);
       setRecords(data);
-    } catch {
-      // handled by axios interceptor
-    } finally {
-      setLoadingRecords(false);
-    }
+    } catch { /* interceptor */ }
+    finally { setLoadingRecords(false); }
   }, [projectId]);
 
   useEffect(() => {
     if (!projectId) return;
-
-    projectApi.get(projectId).then((res) => {
-      setProjectName(res.data.name);
-    }).catch(() => {});
-
+    projectApi.get(projectId).then((res) => setProjectName(res.data.name)).catch(() => {});
     loadRecords();
   }, [projectId, loadRecords]);
 
-  // ── Initialize HeyGen Avatar on mount ─────────────────────────
-  useEffect(() => {
-    if (!projectId) return;
-
-    let avatar: StreamingAvatar | null = null;
-    let cancelled = false;
-
-    const initAvatar = async () => {
-      try {
-        const { token } = await defenseApi.getToken(projectId);
-        if (cancelled) return;
-
-        avatar = new StreamingAvatar({ token });
-        avatarRef.current = avatar;
-
-        avatar.on(StreamingEvents.STREAM_READY, (event: { detail: MediaStream }) => {
-          setAvatarReady(true);
-          if (videoRef.current && event.detail) {
-            videoRef.current.srcObject = event.detail;
-            videoRef.current.play().catch(() => {});
-          }
-        });
-
-        avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
-          setAvatarReady(false);
-          if (phase !== 'idle' && phase !== 'done') {
-            msg.warning('数字人连接已断开');
-            setPhase('idle');
-          }
-        });
-
-        await avatar.createStartAvatar({
-          quality: AvatarQuality.High,
-          avatarName: '80d4afa941c243beb0a1116c95ea48ee',
-        });
-      } catch {
-        if (!cancelled) {
-          setErrorMsg('数字人服务暂时不可用，请稍后重试');
-        }
-      }
-    };
-
-    initAvatar();
-
-    return () => {
-      cancelled = true;
-      avatar?.stopAvatar().catch(() => {});
-      avatarRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
-
-  // ── beforeunload cleanup ──────────────────────────────────────
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      avatarRef.current?.stopAvatar().catch(() => {});
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
-
-  // ── Cleanup media resources helper ────────────────────────────
+  // ── Cleanup ───────────────────────────────────────────────
   const cleanupMedia = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    if (speakTimeoutRef.current) {
-      clearTimeout(speakTimeoutRef.current);
-      speakTimeoutRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
+    if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; }
+    if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop();
     mediaRecorderRef.current = null;
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach((t) => t.stop());
-      audioStreamRef.current = null;
-    }
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
     setAudioStream(null);
     chunksRef.current = [];
   }, []);
 
-  // ── Start recording ───────────────────────────────────────────
+  useEffect(() => () => {
+    cleanupMedia();
+    sessionRef.current?.stop().catch(() => {});
+  }, [cleanupMedia]);
+
+  // ── Recording ─────────────────────────────────────────────
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
       setAudioStream(stream);
-
       const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       recorder.start();
       setPhase('recording');
-
-      // Start countdown
       let remaining = answerDuration;
       setCountdown(remaining);
-
       countdownTimerRef.current = setInterval(() => {
         remaining -= 1;
         setCountdown(remaining);
@@ -220,58 +143,30 @@ export default function DigitalDefense() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answerDuration, projectId]);
 
-  // ── Stop recording and submit ─────────────────────────────────
+  // ── Submit answer ─────────────────────────────────────────
   const stopRecordingAndSubmit = useCallback(async () => {
     if (!projectId) return;
-
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') return;
-
-    // Wait for the recorder to finish
     const audioBlob = await new Promise<Blob>((resolve) => {
-      recorder.onstop = () => {
-        resolve(new Blob(chunksRef.current, { type: 'audio/webm' }));
-      };
+      recorder.onstop = () => resolve(new Blob(chunksRef.current, { type: 'audio/webm' }));
       recorder.stop();
     });
-
-    // Cleanup media tracks
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach((t) => t.stop());
-      audioStreamRef.current = null;
-    }
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
     setAudioStream(null);
-
     setPhase('processing');
-
     try {
       const record = await defenseApi.submitAnswer(projectId, audioBlob, answerDuration);
-
       if (record.ai_feedback_text) {
         setPhase('feedback');
-
-        const avatar = avatarRef.current;
-        if (avatar && avatarReady) {
-          // Listen for stop talking event
-          const onStopTalking = () => {
-            avatar.off(StreamingEvents.AVATAR_STOP_TALKING, onStopTalking);
-            finishDefense();
-          };
-          avatar.on(StreamingEvents.AVATAR_STOP_TALKING, onStopTalking);
-
-          await avatar.speak({
-            text: record.ai_feedback_text,
-            task_type: TaskType.REPEAT,
-          });
-
-          // Fallback timeout in case event doesn't fire
-          speakTimeoutRef.current = setTimeout(() => {
-            avatar.off(StreamingEvents.AVATAR_STOP_TALKING, onStopTalking);
-            finishDefense();
-          }, estimateSpeechDuration(record.ai_feedback_text));
-        } else {
-          // Avatar not available, just show feedback
-          setTimeout(finishDefense, 3000);
+        if (provider === 'heygen') {
+          // Generate feedback video
+          await handleHeyGenSpeak(record.ai_feedback_text, () => finishDefense());
+        } else if (provider === 'liveavatar') {
+          // LiveAvatar: session handles TTS via voiceChat, just show text
+          // The session is conversational, feedback is displayed as text
+          setTimeout(finishDefense, 4000);
         }
       } else {
         finishDefense();
@@ -282,27 +177,73 @@ export default function DigitalDefense() {
       cleanupMedia();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, answerDuration, avatarReady, cleanupMedia]);
+  }, [projectId, answerDuration, provider, cleanupMedia]);
 
-  // ── Finish defense session ────────────────────────────────────
   const finishDefense = useCallback(() => {
     setPhase('done');
     loadRecords();
-    // Reset to idle after a short delay
-    setTimeout(() => setPhase('idle'), 3000);
+    setTimeout(() => { setPhase('idle'); setHeygenVideoUrl(null); }, 3000);
   }, [loadRecords]);
 
-  // ── Start defense flow ────────────────────────────────────────
+  // ── HeyGen video mode helpers ─────────────────────────────
+  const pollHeyGenVideo = useCallback(async (videoId: string): Promise<string | null> => {
+    if (!projectId) return null;
+    setHeygenPolling(true);
+    setHeygenProgress(10);
+    const maxAttempts = 60; // 5 min max
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      setHeygenProgress(Math.min(10 + (i / maxAttempts) * 85, 95));
+      try {
+        const result = await defenseApi.checkHeyGenVideoStatus(projectId, videoId);
+        if (result.status === 'completed' && result.video_url) {
+          setHeygenProgress(100);
+          setHeygenPolling(false);
+          return result.video_url;
+        }
+        if (result.status === 'failed') {
+          setHeygenPolling(false);
+          return null;
+        }
+      } catch { break; }
+    }
+    setHeygenPolling(false);
+    return null;
+  }, [projectId]);
+
+  const handleHeyGenSpeak = useCallback(async (text: string, onDone: () => void) => {
+    if (!projectId) return;
+    try {
+      const { video_id } = await defenseApi.generateHeyGenVideo(projectId, text);
+      const url = await pollHeyGenVideo(video_id);
+      if (url) {
+        setHeygenVideoUrl(url);
+        // Play video and wait for it to end
+        if (videoRef.current) {
+          videoRef.current.src = url;
+          videoRef.current.onended = () => onDone();
+          videoRef.current.play().catch(() => onDone());
+        } else {
+          onDone();
+        }
+      } else {
+        msg.warning('视频生成失败，跳过数字人播放');
+        onDone();
+      }
+    } catch {
+      msg.warning('视频生成失败');
+      onDone();
+    }
+  }, [projectId, pollHeyGenVideo]);
+
+  // ── Start defense ─────────────────────────────────────────
   const handleStartDefense = useCallback(async () => {
     if (!projectId) return;
     setErrorMsg(null);
     setPhase('loading');
+    setHeygenVideoUrl(null);
 
     try {
-      if (!avatarReady) {
-        msg.info('数字人评委正在入场…');
-      }
-
       const questions = await defenseApi.listQuestions(projectId);
       if (!questions.length) {
         msg.warning('请先添加至少一个评委问题');
@@ -310,94 +251,63 @@ export default function DigitalDefense() {
         return;
       }
 
-      // Build speech text
-      const sorted = [...questions].sort((a, b) => a.sort_order - b.sort_order);
-      const qParts = sorted.map((q, i) => {
-        const ord = ORDINALS[i] ?? `第${i + 1}`;
-        return `${ord}，${q.content}`;
-      });
-      const speechText = `你好，我是数字人评委，对于你们的${projectName}项目，我有以下${sorted.length}个问题：${qParts.join('；')}`;
+      const speechText = buildSpeechText(projectName, questions);
 
-      const avatar = avatarRef.current;
-      if (!avatar) {
-        msg.error('数字人服务未就绪，请刷新页面重试');
-        setPhase('idle');
-        return;
-      }
+      if (provider === 'heygen') {
+        // HeyGen: generate video for questions
+        setPhase('speaking');
+        await handleHeyGenSpeak(speechText, () => startRecording());
+      } else {
+        // LiveAvatar: create session and use streaming
+        try {
+          const { session_token } = await defenseApi.createLiveAvatarSession(projectId);
+          const session = new LiveAvatarSession(session_token, { voiceChat: false });
+          sessionRef.current = session;
 
-      setPhase('speaking');
+          session.on(SessionEvent.SESSION_STATE_CHANGED, (state: SessionState) => {
+            if (state === SessionState.CONNECTED) setLiveAvatarReady(true);
+            if (state === SessionState.DISCONNECTED) setLiveAvatarReady(false);
+          });
 
-      // Listen for avatar stop talking to start recording
-      const onStopTalking = () => {
-        avatar.off(StreamingEvents.AVATAR_STOP_TALKING, onStopTalking);
-        if (speakTimeoutRef.current) {
-          clearTimeout(speakTimeoutRef.current);
-          speakTimeoutRef.current = null;
+          session.on(SessionEvent.SESSION_STREAM_READY, () => {
+            if (videoRef.current) {
+              session.attach(videoRef.current);
+            }
+            setLiveAvatarReady(true);
+          });
+
+          session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+            // Avatar finished speaking questions, start recording
+            if (phase === 'speaking') {
+              startRecording();
+            }
+          });
+
+          await session.start();
+          setPhase('speaking');
+
+          // The FULL mode session handles TTS internally
+          // We wait for AVATAR_SPEAK_ENDED event, with a fallback timeout
+          const fallbackMs = Math.ceil(speechText.length / 5) * 1000 + 5000;
+          setTimeout(() => {
+            if (phase === 'speaking') startRecording();
+          }, fallbackMs);
+
+        } catch (err) {
+          logger_warn(err);
+          setErrorMsg('LiveAvatar 服务暂时不可用，请尝试 HeyGen 模式');
+          setPhase('idle');
         }
-        startRecording();
-      };
-      avatar.on(StreamingEvents.AVATAR_STOP_TALKING, onStopTalking);
-
-      await avatar.speak({
-        text: speechText,
-        task_type: TaskType.REPEAT,
-      });
-
-      // Fallback timeout in case event doesn't fire
-      speakTimeoutRef.current = setTimeout(() => {
-        avatar.off(StreamingEvents.AVATAR_STOP_TALKING, onStopTalking);
-        startRecording();
-      }, estimateSpeechDuration(speechText));
+      }
     } catch {
       msg.error('开始问辩失败，请重试');
       setPhase('idle');
     }
-  }, [projectId, projectName, avatarReady, startRecording]);
+  }, [projectId, projectName, provider, handleHeyGenSpeak, startRecording]);
 
-  // ── Retry avatar connection ───────────────────────────────────
-  const handleRetry = useCallback(async () => {
-    if (!projectId) return;
-    setErrorMsg(null);
+  if (!projectId) { navigate('/'); return null; }
 
-    try {
-      const { token } = await defenseApi.getToken(projectId);
-      const avatar = new StreamingAvatar({ token });
-      avatarRef.current = avatar;
-
-      avatar.on(StreamingEvents.STREAM_READY, (event: { detail: MediaStream }) => {
-        setAvatarReady(true);
-        if (videoRef.current && event.detail) {
-          videoRef.current.srcObject = event.detail;
-          videoRef.current.play().catch(() => {});
-        }
-      });
-
-      avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
-        setAvatarReady(false);
-      });
-
-      await avatar.createStartAvatar({
-        quality: AvatarQuality.High,
-        avatarName: '80d4afa941c243beb0a1116c95ea48ee',
-      });
-    } catch {
-      setErrorMsg('数字人服务暂时不可用，请稍后重试');
-    }
-  }, [projectId]);
-
-  // ── Cleanup on unmount ────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      cleanupMedia();
-    };
-  }, [cleanupMedia]);
-
-  if (!projectId) {
-    navigate('/');
-    return null;
-  }
-
-  // ── Render ────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
       <BackButton to={`/projects/${projectId}`} label="返回项目" />
@@ -406,81 +316,73 @@ export default function DigitalDefense() {
         数字人问辩
       </Title>
 
-      {/* Error state with retry */}
       {errorMsg && (
-        <Result
-          status="warning"
-          title={errorMsg}
-          extra={
-            <Button type="primary" onClick={handleRetry}>
-              重试连接
-            </Button>
-          }
-          style={{ marginBottom: 24 }}
-        />
+        <Alert type="warning" message={errorMsg} showIcon closable onClose={() => setErrorMsg(null)} style={{ marginBottom: 24 }} />
       )}
 
+      {/* Provider selector */}
+      <Card size="small" style={{ marginBottom: 24 }}>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text strong>数字人服务</Text>
+          <Radio.Group
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            disabled={phase !== 'idle'}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="liveavatar">
+              <ThunderboltOutlined style={{ marginRight: 4 }} />
+              LiveAvatar（实时流式）
+            </Radio.Button>
+            <Radio.Button value="heygen">
+              <VideoCameraOutlined style={{ marginRight: 4 }} />
+              HeyGen（视频生成）
+            </Radio.Button>
+          </Radio.Group>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {provider === 'liveavatar'
+              ? 'LiveAvatar 提供实时流式数字人，延迟低，交互自然'
+              : 'HeyGen 生成高质量数字人视频，需等待视频渲染（约1-3分钟）'}
+          </Text>
+        </Space>
+      </Card>
+
       {/* History records */}
-      <Card
-        title="问辩记录"
-        style={{ marginBottom: 24 }}
-        size="small"
-      >
+      <Card title="问辩记录" style={{ marginBottom: 24 }} size="small">
         {loadingRecords ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-            <Spin />
-          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spin /></div>
         ) : records.length === 0 ? (
           <Empty description="暂无问辩记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
-          <List
-            dataSource={records}
-            renderItem={(record) => (
-              <List.Item>
-                <div style={{ width: '100%' }}>
-                  <Space style={{ marginBottom: 8 }}>
-                    <Text type="secondary">
-                      <ClockCircleOutlined style={{ marginRight: 4 }} />
-                      {formatTime(record.created_at)}
-                    </Text>
-                    <Tag color={record.status === 'completed' ? 'green' : 'red'}>
-                      {record.status === 'completed' ? '已完成' : '失败'}
-                    </Tag>
-                  </Space>
-
-                  {record.questions_snapshot.length > 0 && (
-                    <div style={{ marginBottom: 4 }}>
-                      <Text strong>问题：</Text>
-                      {record.questions_snapshot
-                        .sort((a, b) => a.sort_order - b.sort_order)
-                        .map((q, i) => (
-                          <Tag key={i} style={{ marginTop: 4 }}>
-                            {q.content}
-                          </Tag>
-                        ))}
-                    </div>
-                  )}
-
-                  {record.user_answer_text && (
-                    <Paragraph
-                      ellipsis={{ rows: 2, expandable: true, symbol: '展开' }}
-                      style={{ marginBottom: 4 }}
-                    >
-                      <Text strong>回答：</Text>
-                      {record.user_answer_text}
-                    </Paragraph>
-                  )}
-
-                  {record.ai_feedback_text && (
-                    <Paragraph style={{ marginBottom: 0 }}>
-                      <Text strong>反馈：</Text>
-                      <Text type="success">{record.ai_feedback_text}</Text>
-                    </Paragraph>
-                  )}
-                </div>
-              </List.Item>
-            )}
-          />
+          <div>
+            {records.map((record, idx) => (
+              <div key={record.id} style={{ padding: '12px 0', borderBottom: idx < records.length - 1 ? '1px solid #f0f0f0' : undefined }}>
+                <Space style={{ marginBottom: 8 }}>
+                  <Text type="secondary"><ClockCircleOutlined style={{ marginRight: 4 }} />{formatTime(record.created_at)}</Text>
+                  <Tag color={record.status === 'completed' ? 'green' : 'red'}>{record.status === 'completed' ? '已完成' : '失败'}</Tag>
+                </Space>
+                {record.questions_snapshot.length > 0 && (
+                  <div style={{ marginBottom: 4 }}>
+                    <Text strong>问题：</Text>
+                    {record.questions_snapshot.sort((a, b) => a.sort_order - b.sort_order).map((q, i) => (
+                      <Tag key={i} style={{ marginTop: 4 }}>{q.content}</Tag>
+                    ))}
+                  </div>
+                )}
+                {record.user_answer_text && (
+                  <Paragraph ellipsis={{ rows: 2, expandable: true, symbol: '展开' }} style={{ marginBottom: 4 }}>
+                    <Text strong>回答：</Text>{record.user_answer_text}
+                  </Paragraph>
+                )}
+                {record.ai_feedback_text && (
+                  <Paragraph style={{ marginBottom: 0 }}>
+                    <Text strong>反馈：</Text><Text type="success">{record.ai_feedback_text}</Text>
+                  </Paragraph>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </Card>
 
@@ -488,120 +390,91 @@ export default function DigitalDefense() {
       <Card size="small" style={{ marginBottom: 24 }}>
         <Space align="center">
           <Text>回答时长：</Text>
-          <InputNumber
-            value={answerDuration}
-            onChange={(v) => setAnswerDuration(v ?? 30)}
-            min={10}
-            max={120}
-            step={5}
-            suffix="秒"
-            disabled={phase !== 'idle'}
-            style={{ width: 140 }}
-          />
+          <InputNumber value={answerDuration} onChange={(v) => setAnswerDuration(v ?? 30)} min={10} max={120} step={5} suffix="秒" disabled={phase !== 'idle'} style={{ width: 140 }} />
         </Space>
       </Card>
 
       {/* Start button */}
       <Button
-        type="primary"
-        size="large"
-        icon={<SoundOutlined />}
+        type="primary" size="large" icon={<SoundOutlined />}
         onClick={handleStartDefense}
         disabled={phase !== 'idle' || !!errorMsg}
         loading={phase === 'loading'}
-        block
-        style={{ marginBottom: 24 }}
+        block style={{ marginBottom: 24 }}
       >
         开始问辩
       </Button>
 
-      {/* Avatar video area */}
+      {/* Video / Avatar area */}
       {phase !== 'idle' && (
         <Card style={{ marginBottom: 24, textAlign: 'center' }}>
           <video
             ref={videoRef}
-            autoPlay
-            playsInline
+            autoPlay playsInline
             style={{
-              width: '100%',
-              maxWidth: 480,
-              borderRadius: 8,
-              background: '#000',
-              display: avatarReady ? 'block' : 'none',
+              width: '100%', maxWidth: 480, borderRadius: 8, background: '#000',
+              display: (heygenVideoUrl || liveAvatarReady) ? 'block' : 'none',
               margin: '0 auto',
             }}
           />
-          {!avatarReady && phase === 'loading' && (
+          {phase === 'loading' && (
             <div style={{ padding: 40 }}>
               <Spin size="large" />
               <div style={{ marginTop: 16 }}>
-                <Text type="secondary">数字人评委正在入场…</Text>
+                <Text type="secondary">
+                  {provider === 'heygen' ? '正在生成数字人视频…' : '数字人评委正在入场…'}
+                </Text>
               </div>
             </div>
           )}
-
-          {phase === 'speaking' && (
+          {phase === 'speaking' && heygenPolling && (
+            <div style={{ padding: 16 }}>
+              <Progress percent={heygenProgress} status="active" />
+              <Text type="secondary">HeyGen 视频渲染中，请稍候…</Text>
+            </div>
+          )}
+          {phase === 'speaking' && !heygenPolling && (
             <div style={{ marginTop: 12 }}>
-              <Tag icon={<SoundOutlined />} color="processing">
-                数字人评委正在提问…
-              </Tag>
+              <Tag icon={<SoundOutlined />} color="processing">数字人评委正在提问…</Tag>
             </div>
           )}
         </Card>
       )}
 
-      {/* Recording area */}
+      {/* Recording */}
       {phase === 'recording' && (
         <Card style={{ marginBottom: 24, textAlign: 'center' }}>
-          <div style={{ marginBottom: 16 }}>
-            <AudioOutlined style={{ fontSize: 32, color: '#f5222d' }} />
-          </div>
-          <div
-            style={{
-              fontSize: 48,
-              fontWeight: 700,
-              color: countdown <= 5 ? '#f5222d' : '#1677ff',
-              marginBottom: 16,
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
+          <AudioOutlined style={{ fontSize: 32, color: '#f5222d', marginBottom: 16 }} />
+          <div style={{ fontSize: 48, fontWeight: 700, color: countdown <= 5 ? '#f5222d' : '#1677ff', marginBottom: 16, fontVariantNumeric: 'tabular-nums' }}>
             {countdown}
           </div>
           <Text type="secondary">正在录音，请回答评委问题</Text>
-          <div style={{ marginTop: 16 }}>
-            <AudioWaveform stream={audioStream} height={60} />
-          </div>
+          <div style={{ marginTop: 16 }}><AudioWaveform stream={audioStream} height={60} /></div>
         </Card>
       )}
 
-      {/* Processing indicator */}
       {phase === 'processing' && (
         <Card style={{ marginBottom: 24, textAlign: 'center', padding: 24 }}>
           <Spin size="large" />
-          <div style={{ marginTop: 16 }}>
-            <Text type="secondary">正在处理回答，请稍候…</Text>
-          </div>
+          <div style={{ marginTop: 16 }}><Text type="secondary">正在处理回答，请稍候…</Text></div>
         </Card>
       )}
 
-      {/* Feedback indicator */}
       {phase === 'feedback' && (
         <Card style={{ marginBottom: 24, textAlign: 'center' }}>
-          <Tag icon={<RobotOutlined />} color="processing">
-            数字人评委正在给出反馈…
-          </Tag>
+          {heygenPolling && <Progress percent={heygenProgress} status="active" style={{ marginBottom: 12 }} />}
+          <Tag icon={<RobotOutlined />} color="processing">数字人评委正在给出反馈…</Tag>
         </Card>
       )}
 
-      {/* Done indicator */}
       {phase === 'done' && (
-        <Result
-          status="success"
-          title="问辩完成"
-          subTitle="评委反馈已记录，可在上方查看历史记录"
-          style={{ marginBottom: 24 }}
-        />
+        <Result status="success" title="问辩完成" subTitle="评委反馈已记录，可在上方查看历史记录" style={{ marginBottom: 24 }} />
       )}
     </div>
   );
+}
+
+// Suppress console noise for non-critical errors
+function logger_warn(err: unknown) {
+  console.warn('[DigitalDefense]', err);
 }

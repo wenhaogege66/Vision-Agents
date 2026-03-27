@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     heygen_api_key: str = ""
     heygen_avatar_id: str = "80d4afa941c243beb0a1116c95ea48ee"
 
+    # LiveAvatar 数字人配置
+    liveavatar_api_key: str = ""
+    liveavatar_avatar_id: str = ""
+
     # 应用配置
     app_env: str = "development"
     app_debug: bool = True

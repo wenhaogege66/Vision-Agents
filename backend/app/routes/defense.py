@@ -1,6 +1,7 @@
-"""数字人问辩路由：HeyGen token、问题 CRUD、答案提交、记录查询。"""
+"""数字人问辩路由：数字人服务（HeyGen/LiveAvatar）、问题 CRUD、答案提交、记录查询。"""
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from pydantic import BaseModel
 from supabase import Client
 
 from app.models.database import get_supabase
@@ -11,8 +12,8 @@ from app.models.schemas import (
     UserInfo,
 )
 from app.routes.auth import get_current_user
+from app.services.avatar import HeyGenVideoService, LiveAvatarStreamService
 from app.services.defense_service import DefenseService
-from app.services.heygen_service import HeyGenService
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/defense",
@@ -24,18 +25,61 @@ def _get_defense_service(supabase: Client = Depends(get_supabase)) -> DefenseSer
     return DefenseService(supabase)
 
 
-# ── HeyGen Token ──────────────────────────────────────────────
+# ── 数字人服务 ────────────────────────────────────────────────
 
 
-@router.post("/token")
-async def create_heygen_token(
+class AvatarVideoRequest(BaseModel):
+    text: str
+    avatar_id: str | None = None
+
+
+@router.post("/avatar/liveavatar/session")
+async def create_liveavatar_session(
     project_id: str,
     user: UserInfo = Depends(get_current_user),
 ):
-    """获取 HeyGen streaming access token。"""
-    svc = HeyGenService()
-    token = await svc.create_token()
-    return {"token": token}
+    """创建 LiveAvatar 实时流式会话。"""
+    svc = LiveAvatarStreamService()
+    info = await svc.create_session()
+    return {
+        "provider": "liveavatar",
+        "mode": "streaming",
+        "session_token": info.session_token,
+        "session_id": info.session_id,
+    }
+
+
+@router.post("/avatar/heygen/generate")
+async def generate_heygen_video(
+    project_id: str,
+    body: AvatarVideoRequest,
+    user: UserInfo = Depends(get_current_user),
+):
+    """通过 HeyGen 生成数字人视频。"""
+    svc = HeyGenVideoService()
+    result = await svc.generate_video(body.text, body.avatar_id)
+    return {
+        "provider": "heygen",
+        "mode": "video",
+        "video_id": result.video_id,
+        "status": result.status,
+    }
+
+
+@router.get("/avatar/heygen/status/{video_id}")
+async def check_heygen_video_status(
+    project_id: str,
+    video_id: str,
+    user: UserInfo = Depends(get_current_user),
+):
+    """查询 HeyGen 视频生成状态。"""
+    svc = HeyGenVideoService()
+    result = await svc.check_video_status(video_id)
+    return {
+        "video_id": result.video_id,
+        "status": result.status,
+        "video_url": result.video_url,
+    }
 
 
 # ── 问题 CRUD ─────────────────────────────────────────────────
@@ -47,7 +91,6 @@ async def list_questions(
     user: UserInfo = Depends(get_current_user),
     svc: DefenseService = Depends(_get_defense_service),
 ):
-    """获取项目的预定义问题列表。"""
     return await svc.list_questions(project_id)
 
 
@@ -58,7 +101,6 @@ async def create_question(
     user: UserInfo = Depends(get_current_user),
     svc: DefenseService = Depends(_get_defense_service),
 ):
-    """创建新的预定义问题。"""
     return await svc.create_question(project_id, body.content)
 
 
@@ -70,7 +112,6 @@ async def update_question(
     user: UserInfo = Depends(get_current_user),
     svc: DefenseService = Depends(_get_defense_service),
 ):
-    """更新预定义问题内容。"""
     return await svc.update_question(question_id, body.content)
 
 
@@ -81,7 +122,6 @@ async def delete_question(
     user: UserInfo = Depends(get_current_user),
     svc: DefenseService = Depends(_get_defense_service),
 ):
-    """删除预定义问题。"""
     await svc.delete_question(question_id)
 
 
@@ -96,7 +136,6 @@ async def submit_answer(
     user: UserInfo = Depends(get_current_user),
     svc: DefenseService = Depends(_get_defense_service),
 ):
-    """提交用户回答音频，执行 STT 转写和 AI 反馈生成。"""
     audio_bytes = await audio.read()
     return await svc.submit_answer(
         project_id=project_id,
@@ -115,5 +154,4 @@ async def list_records(
     user: UserInfo = Depends(get_current_user),
     svc: DefenseService = Depends(_get_defense_service),
 ):
-    """获取项目的问辩记录列表，按时间倒序。"""
     return await svc.list_records(project_id)

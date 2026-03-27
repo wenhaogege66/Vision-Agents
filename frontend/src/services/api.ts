@@ -356,9 +356,25 @@ export const tagApi = {
 import type { DefenseQuestion, DefenseRecord } from '@/types';
 
 export const defenseApi = {
-  getToken: (projectId: string) =>
-    api.post<{ token: string }>(`/projects/${projectId}/defense/token`).then(r => r.data),
+  // ── LiveAvatar 实时流式会话 ──
+  createLiveAvatarSession: (projectId: string) =>
+    api.post<{ provider: string; mode: string; session_token: string; session_id: string }>(
+      `/projects/${projectId}/defense/avatar/liveavatar/session`,
+    ).then(r => r.data),
 
+  // ── HeyGen 视频生成 ──
+  generateHeyGenVideo: (projectId: string, text: string) =>
+    api.post<{ provider: string; mode: string; video_id: string; status: string }>(
+      `/projects/${projectId}/defense/avatar/heygen/generate`,
+      { text },
+    ).then(r => r.data),
+
+  checkHeyGenVideoStatus: (projectId: string, videoId: string) =>
+    api.get<{ video_id: string; status: string; video_url: string | null }>(
+      `/projects/${projectId}/defense/avatar/heygen/status/${videoId}`,
+    ).then(r => r.data),
+
+  // ── 问题 CRUD ──
   listQuestions: (projectId: string) =>
     api.get<DefenseQuestion[]>(`/projects/${projectId}/defense/questions`).then(r => r.data),
 
