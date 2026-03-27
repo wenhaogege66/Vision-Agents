@@ -39,7 +39,7 @@ export default function ReviewHistory() {
     });
   }, [projectId]);
 
-  if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}><Spin size="large" tip="加载中…" /></div>;
 
   return (
     <div style={{ padding: 24 }}>

@@ -90,6 +90,7 @@ export default function MaterialCenter() {
   });
   const [downloading, setDownloading] = useState<string | null>(null);
   const [projectProfile, setProjectProfile] = useState<ProjectProfile | null>(null);
+  const [questionsGenerating, setQuestionsGenerating] = useState(false);
 
   const fetchMaterials = useCallback(async () => {
     if (!projectId) return;
@@ -154,7 +155,9 @@ export default function MaterialCenter() {
     }
     if (!projectId) return false;
     const opId = `upload_${config.key}` as const;
+    // 立即标记为加载状态（修复延迟显示 bug）
     startOperation(opId);
+
     try {
       // 记录上传前是否已有 BP 和文本 PPT
       const hadBp = !!materials['bp'];
@@ -165,14 +168,13 @@ export default function MaterialCenter() {
       completeOperation(opId);
       await fetchMaterials();
 
-      // 仅在用户首次同时拥有 BP 和文本 PPT 时自动触发 AI 项目简介生成
-      // （即之前缺少其中一个，本次上传补齐了）
-      if (!projectProfile && (config.key === 'bp' || config.key === 'text_ppt')) {
+      // 当 BP 和文本 PPT 都已上传时，自动触发 AI 简历和问题生成
+      if (config.key === 'bp' || config.key === 'text_ppt') {
         const willHaveBp = config.key === 'bp' || hadBp;
         const willHaveTextPpt = config.key === 'text_ppt' || hadTextPpt;
-        const previouslyBothExisted = hadBp && hadTextPpt;
 
-        if (willHaveBp && willHaveTextPpt && !previouslyBothExisted) {
+        if (willHaveBp && willHaveTextPpt) {
+          // 无论之前是否已有简介，都重新生成（确保数据最新）
           triggerProfileExtract();
         }
       }
@@ -210,7 +212,11 @@ export default function MaterialCenter() {
   };
 
   if (loading) {
-    return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}>
+        <Spin size="large" tip="加载中…" />
+      </div>
+    );
   }
 
   return (
@@ -224,10 +230,15 @@ export default function MaterialCenter() {
       <Row gutter={[16, 16]}>
         {MATERIAL_CONFIGS.map((config) => {
           const mat = materials[config.key];
+          const isUploading = getStatus(`upload_${config.key}`) === 'loading';
           const uploadProps: UploadProps = {
-            beforeUpload: (file) => handleUpload(file, config),
+            beforeUpload: (file) => {
+              handleUpload(file, config);
+              return false; // 阻止默认上传行为
+            },
             showUploadList: false,
             accept: config.accept,
+            disabled: isUploading,
           };
 
           return (
@@ -268,7 +279,7 @@ export default function MaterialCenter() {
                 <Upload {...uploadProps}>
                   <Button
                     icon={<UploadOutlined />}
-                    loading={getStatus(`upload_${config.key}`) === 'loading'}
+                    loading={isUploading}
                   >
                     {mat ? '更新材料' : '上传材料'}
                   </Button>
@@ -284,9 +295,11 @@ export default function MaterialCenter() {
 
       {/* AI 项目简介自动生成状态 */}
       {getStatus('profile_extract') === 'loading' && (
-        <Card style={{ marginTop: 16 }}>
-          <Spin size="small" style={{ marginRight: 8 }} />
-          <Text>正在生成项目简介...</Text>
+        <Card style={{ marginTop: 16, textAlign: 'center' }}>
+          <Space direction="vertical" align="center" style={{ width: '100%', padding: '16px 0' }}>
+            <Spin size="default" />
+            <Text type="secondary">正在生成项目简介和评委问题，请稍候…</Text>
+          </Space>
         </Card>
       )}
       {getStatus('profile_extract') === 'error' && (

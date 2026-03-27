@@ -63,7 +63,7 @@ export default function ReviewDetail() {
     }
   };
 
-  if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}><Spin size="large" tip="加载中…" /></div>;
   if (!result) return <Title level={4}>评审记录不存在</Title>;
 
   return (

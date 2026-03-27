@@ -75,6 +75,7 @@ export default function ProjectDashboard() {
   const [extracting, setExtracting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [defenseQuestionCount, setDefenseQuestionCount] = useState(0);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
 
   const { status: materialStatus, loading: statusLoading } = useReadinessChecker(id ?? '');
   const { resolve } = useLabelResolver();
@@ -125,6 +126,26 @@ export default function ProjectDashboard() {
       });
   }, [id]);
 
+  // Auto-trigger AI profile extraction + question generation when both BP and text_ppt are uploaded but profile is missing
+  useEffect(() => {
+    if (!id || !materialStatus || extracting) return;
+    const bothUploaded = materialStatus.bp?.uploaded && materialStatus.text_ppt?.uploaded;
+    if (bothUploaded && profileNotFound && !profile) {
+      setExtracting(true);
+      profileApi.extract(id)
+        .then((data) => {
+          setProfile(data);
+          setProfileNotFound(false);
+          msg.success('AI已自动生成项目简介和评委问题');
+        })
+        .catch(() => {
+          // 静默失败，用户可手动触发
+        })
+        .finally(() => setExtracting(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, materialStatus, profileNotFound]);
+
   // Fetch project tags and all user tags
   useEffect(() => {
     if (!id) return;
@@ -173,8 +194,8 @@ export default function ProjectDashboard() {
 
   if (loading || !project) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
-        <Spin size="large" />
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400, width: '100%' }}>
+        <Spin size="large" tip="加载中…" />
       </div>
     );
   }
@@ -183,6 +204,8 @@ export default function ProjectDashboard() {
 
   const textReviewReady = materialStatus?.any_text_material_ready ?? false;
   const offlineReviewReady = materialStatus?.offline_review_ready ?? false;
+  const hasBpOrTextPpt = (materialStatus?.bp?.uploaded ?? false) || (materialStatus?.text_ppt?.uploaded ?? false);
+  const hasBpAndTextPpt = (materialStatus?.bp?.uploaded ?? false) && (materialStatus?.text_ppt?.uploaded ?? false);
 
   /** Build a tooltip string for a not-ready review card. */
   const getNotReadyTooltip = (type: 'text' | 'offline' | 'defense'): string => {
@@ -192,7 +215,7 @@ export default function ProjectDashboard() {
       return '请先上传至少一种评审材料（BP、文本PPT或路演PPT）';
     }
     if (type === 'defense') {
-      return '请先添加至少一个评委问题';
+      return '上传BP和文本PPT，等待简历和问题初始化并确保至少有一个评委问题';
     }
     return materialStatus.offline_review_reasons.length > 0
       ? materialStatus.offline_review_reasons.join('；')
@@ -496,17 +519,34 @@ export default function ProjectDashboard() {
               <Button size="small" icon={<EditOutlined />} onClick={handleStartEdit}>编辑</Button>
               <Button size="small" icon={<SyncOutlined />} loading={extracting} onClick={handleExtractProfile}>重新提取</Button>
             </Space>
+          ) : extracting ? (
+            <Tag icon={<SyncOutlined spin />} color="processing">AI生成中…</Tag>
           ) : undefined
         }
       >
-        {profileNotFound && !profile ? (
+        {extracting && !profile ? (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: 16 }}>
+              <Text type="secondary">AI正在从BP和文本PPT中提取项目简介…</Text>
+            </div>
+          </div>
+        ) : profileNotFound && !profile ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
               暂无项目简介，可通过AI从BP和文本PPT中自动提取
             </Text>
-            <Button type="primary" icon={<RobotOutlined />} loading={extracting} onClick={handleExtractProfile}>
-              AI提取简介
-            </Button>
+            <Tooltip title={!hasBpOrTextPpt ? '请先上传BP或文本PPT' : undefined}>
+              <Button
+                type="primary"
+                icon={<RobotOutlined />}
+                loading={extracting}
+                onClick={handleExtractProfile}
+                disabled={!hasBpOrTextPpt}
+              >
+                AI提取简介
+              </Button>
+            </Tooltip>
           </div>
         ) : profile && profileEditing ? (
           <>
@@ -575,6 +615,7 @@ export default function ProjectDashboard() {
         title="评委预定义问题"
         style={{ borderRadius: 12, marginBottom: 24 }}
         styles={{ body: { padding: '20px 24px' } }}
+        extra={extracting ? <Tag icon={<SyncOutlined spin />} color="processing">AI生成中…</Tag> : undefined}
       >
         <DefenseQuestionManager
           projectId={id ?? ''}

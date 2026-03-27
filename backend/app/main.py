@@ -1,5 +1,6 @@
 """FastAPI 应用入口：注册 CORS 中间件、全局异常处理器和路由"""
 
+import asyncio
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
@@ -106,3 +107,73 @@ app.include_router(project_tag_router)
 async def health_check():
     """健康检查端点"""
     return {"status": "ok"}
+
+
+# ── 启动扫描：自动补全缺失的简介和问题 ──────────────────────
+
+
+async def _scan_and_fill_missing():
+    """扫描所有项目，对已有 BP+文本PPT 但缺少简介或问题的项目自动生成。"""
+    from app.models.database import get_supabase
+    from app.services.profile_service import ProfileService
+    from app.services.defense_service import DefenseService
+
+    try:
+        sb = get_supabase()
+    except Exception as exc:
+        logger.warning("扫描任务无法获取 Supabase 客户端: %s", exc)
+        return
+
+    try:
+        # 获取所有项目
+        projects = sb.table("projects").select("id").execute().data or []
+    except Exception as exc:
+        logger.warning("扫描任务查询项目列表失败: %s", exc)
+        return
+
+    profile_svc = ProfileService(sb)
+    defense_svc = DefenseService(sb)
+
+    for proj in projects:
+        pid = proj["id"]
+        try:
+            # 检查是否有 BP 和文本 PPT
+            bp = sb.table("project_materials").select("id").eq("project_id", pid).eq("material_type", "bp").eq("is_latest", True).limit(1).execute()
+            text_ppt = sb.table("project_materials").select("id").eq("project_id", pid).eq("material_type", "text_ppt").eq("is_latest", True).limit(1).execute()
+
+            has_bp = bool(bp.data)
+            has_text_ppt = bool(text_ppt.data)
+
+            if not (has_bp and has_text_ppt):
+                continue
+
+            # 检查简介
+            profile_result = sb.table("project_profiles").select("id, team_intro, domain").eq("project_id", pid).limit(1).execute()
+            has_profile = bool(profile_result.data) and any(
+                profile_result.data[0].get(f) for f in ["team_intro", "domain"]
+            )
+
+            # 检查问题
+            questions = sb.table("defense_questions").select("id").eq("project_id", pid).limit(1).execute()
+            has_questions = bool(questions.data)
+
+            if not has_profile:
+                logger.info("扫描：项目 %s 缺少简介，自动生成中…", pid)
+                await profile_svc.extract_profile(pid)
+                logger.info("扫描：项目 %s 简介和问题生成完成", pid)
+            elif not has_questions:
+                # 有简介但没问题，单独生成问题
+                logger.info("扫描：项目 %s 缺少问题，自动生成中…", pid)
+                profile_data = profile_result.data[0]
+                await defense_svc.generate_questions(pid, profile_data)
+                logger.info("扫描：项目 %s 问题生成完成", pid)
+
+        except Exception as exc:
+            logger.warning("扫描：项目 %s 自动生成失败: %s", pid, exc)
+            continue
+
+
+@app.on_event("startup")
+async def startup_scan():
+    """应用启动时异步执行扫描任务。"""
+    asyncio.create_task(_scan_and_fill_missing())

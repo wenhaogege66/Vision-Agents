@@ -427,7 +427,7 @@ export default function DigitalDefense() {
         size="small"
       >
         {loadingRecords ? (
-          <div style={{ textAlign: 'center', padding: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
             <Spin />
           </div>
         ) : records.length === 0 ? (

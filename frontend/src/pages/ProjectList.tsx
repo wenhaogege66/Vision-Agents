@@ -24,6 +24,7 @@ import {
 import { projectApi, tagApi } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLabelResolver } from '@/hooks/useLabelResolver';
+import { triggerSidebarRefresh } from '@/components/AppLayout';
 import type { ProjectResponse, CompetitionStage, TagInfo } from '@/types';
 import { STAGE_LABELS } from '@/types';
 
@@ -97,6 +98,7 @@ export default function ProjectList() {
           await projectApi.delete(project.id);
           setProjects((prev) => prev.filter((p) => p.id !== project.id));
           msg.success('项目已删除');
+          triggerSidebarRefresh();
         } catch {
           // global interceptor handles error
         }
@@ -176,8 +178,8 @@ export default function ProjectList() {
 
       {/* Content */}
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
-          <Spin size="large" />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300, width: '100%' }}>
+          <Spin size="large" tip="加载中…" />
         </div>
       ) : projects.length === 0 ? (
         <Card style={{ borderRadius: 12, textAlign: 'center', padding: '48px 0' }}>
