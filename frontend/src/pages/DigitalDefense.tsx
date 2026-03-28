@@ -13,6 +13,7 @@ import {
   Radio,
   Alert,
   Progress,
+  Flex,
 } from 'antd';
 import {
   SoundOutlined,
@@ -52,10 +53,7 @@ export default function DigitalDefense() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
 
-  // Provider selection
   const [provider, setProvider] = useState<AvatarProvider>('liveavatar');
-
-  // Core state
   const [phase, setPhase] = useState<Phase>('idle');
   const [countdown, setCountdown] = useState(0);
   const [answerDuration, setAnswerDuration] = useState(30);
@@ -64,12 +62,12 @@ export default function DigitalDefense() {
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // HeyGen video mode state
+  // HeyGen video state
   const [heygenVideoUrl, setHeygenVideoUrl] = useState<string | null>(null);
   const [heygenPolling, setHeygenPolling] = useState(false);
   const [heygenProgress, setHeygenProgress] = useState(0);
 
-  // LiveAvatar streaming mode state
+  // LiveAvatar state
   const sessionRef = useRef<LiveAvatarSession | null>(null);
   const [liveAvatarReady, setLiveAvatarReady] = useState(false);
 
@@ -81,13 +79,17 @@ export default function DigitalDefense() {
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
+  // Use refs for callbacks that need latest state without re-creating
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
+
   // ── Load data ─────────────────────────────────────────────
   const loadRecords = useCallback(async () => {
     if (!projectId) return;
-    try {
-      const data = await defenseApi.listRecords(projectId);
-      setRecords(data);
-    } catch { /* interceptor */ }
+    try { setRecords(await defenseApi.listRecords(projectId)); }
+    catch { /* interceptor */ }
     finally { setLoadingRecords(false); }
   }, [projectId]);
 
@@ -113,6 +115,73 @@ export default function DigitalDefense() {
     sessionRef.current?.stop().catch(() => {});
   }, [cleanupMedia]);
 
+  // ── HeyGen: poll video status ─────────────────────────────
+  const pollHeyGenVideo = useCallback(async (videoId: string): Promise<string | null> => {
+    if (!projectId) return null;
+    setHeygenPolling(true);
+    setHeygenProgress(5);
+    const maxAttempts = 60;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      setHeygenProgress(Math.min(5 + ((i + 1) / maxAttempts) * 90, 95));
+      try {
+        const result = await defenseApi.checkHeyGenVideoStatus(projectId, videoId);
+        if (result.status === 'completed' && result.video_url) {
+          setHeygenProgress(100);
+          setHeygenPolling(false);
+          return result.video_url;
+        }
+        if (result.status === 'failed') {
+          setHeygenPolling(false);
+          return null;
+        }
+        // processing / pending → continue polling
+      } catch {
+        // network error → continue polling
+      }
+    }
+    setHeygenPolling(false);
+    return null;
+  }, [projectId]);
+
+  // ── HeyGen: generate + poll + play video ──────────────────
+  const heygenSpeak = useCallback(async (text: string): Promise<boolean> => {
+    if (!projectId) return false;
+    try {
+      setHeygenPolling(true);
+      setHeygenProgress(0);
+      const { video_id } = await defenseApi.generateHeyGenVideo(projectId, text);
+      const url = await pollHeyGenVideo(video_id);
+      if (!url) {
+        msg.warning('HeyGen 视频生成失败');
+        return false;
+      }
+      setHeygenVideoUrl(url);
+      // Play video and wait for it to finish
+      return await new Promise<boolean>((resolve) => {
+        const video = videoRef.current;
+        if (!video) { resolve(false); return; }
+        video.src = url;
+        video.load();
+        video.onended = () => resolve(true);
+        video.onerror = () => resolve(false);
+        video.play().catch(() => resolve(false));
+      });
+    } catch {
+      msg.warning('HeyGen 视频生成失败');
+      return false;
+    }
+  }, [projectId, pollHeyGenVideo]);
+
+  // ── Finish defense ────────────────────────────────────────
+  const finishDefense = useCallback(() => {
+    setPhase('done');
+    setHeygenVideoUrl(null);
+    setHeygenPolling(false);
+    loadRecords();
+    setTimeout(() => setPhase('idle'), 3000);
+  }, [loadRecords]);
+
   // ── Recording ─────────────────────────────────────────────
   const startRecording = useCallback(async () => {
     try {
@@ -133,21 +202,29 @@ export default function DigitalDefense() {
         if (remaining <= 0) {
           clearInterval(countdownTimerRef.current!);
           countdownTimerRef.current = null;
-          stopRecordingAndSubmit();
+          // Will call stopRecordingAndSubmit via effect or inline
         }
       }, 1000);
     } catch {
       msg.warning('请允许麦克风权限以进行回答录音');
       setPhase('idle');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [answerDuration, projectId]);
+  }, [answerDuration]);
 
-  // ── Submit answer ─────────────────────────────────────────
-  const stopRecordingAndSubmit = useCallback(async () => {
+  // Auto-stop recording when countdown reaches 0
+  useEffect(() => {
+    if (phase === 'recording' && countdown <= 0 && mediaRecorderRef.current?.state === 'recording') {
+      doStopAndSubmit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown, phase]);
+
+  // ── Stop recording + submit + feedback ────────────────────
+  const doStopAndSubmit = useCallback(async () => {
     if (!projectId) return;
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') return;
+
     const audioBlob = await new Promise<Blob>((resolve) => {
       recorder.onstop = () => resolve(new Blob(chunksRef.current, { type: 'audio/webm' }));
       recorder.stop();
@@ -155,17 +232,24 @@ export default function DigitalDefense() {
     audioStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioStreamRef.current = null;
     setAudioStream(null);
+
     setPhase('processing');
     try {
       const record = await defenseApi.submitAnswer(projectId, audioBlob, answerDuration);
+
       if (record.ai_feedback_text) {
         setPhase('feedback');
-        if (provider === 'heygen') {
-          // Generate feedback video
-          await handleHeyGenSpeak(record.ai_feedback_text, () => finishDefense());
-        } else if (provider === 'liveavatar') {
-          // LiveAvatar: session handles TTS via voiceChat, just show text
-          // The session is conversational, feedback is displayed as text
+
+        if (providerRef.current === 'heygen') {
+          // Generate HeyGen feedback video
+          const played = await heygenSpeak(record.ai_feedback_text);
+          if (!played) {
+            // Video failed but we still have text feedback, show briefly then finish
+            await new Promise((r) => setTimeout(r, 3000));
+          }
+          finishDefense();
+        } else {
+          // LiveAvatar or fallback: show text feedback for a few seconds
           setTimeout(finishDefense, 4000);
         }
       } else {
@@ -176,65 +260,7 @@ export default function DigitalDefense() {
       setPhase('idle');
       cleanupMedia();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, answerDuration, provider, cleanupMedia]);
-
-  const finishDefense = useCallback(() => {
-    setPhase('done');
-    loadRecords();
-    setTimeout(() => { setPhase('idle'); setHeygenVideoUrl(null); }, 3000);
-  }, [loadRecords]);
-
-  // ── HeyGen video mode helpers ─────────────────────────────
-  const pollHeyGenVideo = useCallback(async (videoId: string): Promise<string | null> => {
-    if (!projectId) return null;
-    setHeygenPolling(true);
-    setHeygenProgress(10);
-    const maxAttempts = 60; // 5 min max
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      setHeygenProgress(Math.min(10 + (i / maxAttempts) * 85, 95));
-      try {
-        const result = await defenseApi.checkHeyGenVideoStatus(projectId, videoId);
-        if (result.status === 'completed' && result.video_url) {
-          setHeygenProgress(100);
-          setHeygenPolling(false);
-          return result.video_url;
-        }
-        if (result.status === 'failed') {
-          setHeygenPolling(false);
-          return null;
-        }
-      } catch { break; }
-    }
-    setHeygenPolling(false);
-    return null;
-  }, [projectId]);
-
-  const handleHeyGenSpeak = useCallback(async (text: string, onDone: () => void) => {
-    if (!projectId) return;
-    try {
-      const { video_id } = await defenseApi.generateHeyGenVideo(projectId, text);
-      const url = await pollHeyGenVideo(video_id);
-      if (url) {
-        setHeygenVideoUrl(url);
-        // Play video and wait for it to end
-        if (videoRef.current) {
-          videoRef.current.src = url;
-          videoRef.current.onended = () => onDone();
-          videoRef.current.play().catch(() => onDone());
-        } else {
-          onDone();
-        }
-      } else {
-        msg.warning('视频生成失败，跳过数字人播放');
-        onDone();
-      }
-    } catch {
-      msg.warning('视频生成失败');
-      onDone();
-    }
-  }, [projectId, pollHeyGenVideo]);
+  }, [projectId, answerDuration, heygenSpeak, finishDefense, cleanupMedia]);
 
   // ── Start defense ─────────────────────────────────────────
   const handleStartDefense = useCallback(async () => {
@@ -254,11 +280,14 @@ export default function DigitalDefense() {
       const speechText = buildSpeechText(projectName, questions);
 
       if (provider === 'heygen') {
-        // HeyGen: generate video for questions
         setPhase('speaking');
-        await handleHeyGenSpeak(speechText, () => startRecording());
+        const played = await heygenSpeak(speechText);
+        if (!played) {
+          msg.warning('视频生成失败，直接进入录音');
+        }
+        startRecording();
       } else {
-        // LiveAvatar: create session and use streaming
+        // LiveAvatar streaming mode
         try {
           const { session_token } = await defenseApi.createLiveAvatarSession(projectId);
           const session = new LiveAvatarSession(session_token, { voiceChat: false });
@@ -270,15 +299,14 @@ export default function DigitalDefense() {
           });
 
           session.on(SessionEvent.SESSION_STREAM_READY, () => {
-            if (videoRef.current) {
-              session.attach(videoRef.current);
-            }
+            if (videoRef.current) session.attach(videoRef.current);
             setLiveAvatarReady(true);
           });
 
+          let speakEnded = false;
           session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
-            // Avatar finished speaking questions, start recording
-            if (phase === 'speaking') {
+            if (!speakEnded && phaseRef.current === 'speaking') {
+              speakEnded = true;
               startRecording();
             }
           });
@@ -286,15 +314,17 @@ export default function DigitalDefense() {
           await session.start();
           setPhase('speaking');
 
-          // The FULL mode session handles TTS internally
-          // We wait for AVATAR_SPEAK_ENDED event, with a fallback timeout
+          // Fallback timeout
           const fallbackMs = Math.ceil(speechText.length / 5) * 1000 + 5000;
           setTimeout(() => {
-            if (phase === 'speaking') startRecording();
+            if (!speakEnded && phaseRef.current === 'speaking') {
+              speakEnded = true;
+              startRecording();
+            }
           }, fallbackMs);
 
         } catch (err) {
-          logger_warn(err);
+          console.warn('[DigitalDefense] LiveAvatar error:', err);
           setErrorMsg('LiveAvatar 服务暂时不可用，请尝试 HeyGen 模式');
           setPhase('idle');
         }
@@ -303,11 +333,10 @@ export default function DigitalDefense() {
       msg.error('开始问辩失败，请重试');
       setPhase('idle');
     }
-  }, [projectId, projectName, provider, handleHeyGenSpeak, startRecording]);
+  }, [projectId, projectName, provider, heygenSpeak, startRecording]);
 
   if (!projectId) { navigate('/'); return null; }
 
-  // ── Render ────────────────────────────────────────────────
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
       <BackButton to={`/projects/${projectId}`} label="返回项目" />
@@ -322,7 +351,7 @@ export default function DigitalDefense() {
 
       {/* Provider selector */}
       <Card size="small" style={{ marginBottom: 24 }}>
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Flex vertical gap={8}>
           <Text strong>数字人服务</Text>
           <Radio.Group
             value={provider}
@@ -345,7 +374,7 @@ export default function DigitalDefense() {
               ? 'LiveAvatar 提供实时流式数字人，延迟低，交互自然'
               : 'HeyGen 生成高质量数字人视频，需等待视频渲染（约1-3分钟）'}
           </Text>
-        </Space>
+        </Flex>
       </Card>
 
       {/* History records */}
@@ -388,7 +417,7 @@ export default function DigitalDefense() {
 
       {/* Settings */}
       <Card size="small" style={{ marginBottom: 24 }}>
-        <Space align="center">
+        <Space>
           <Text>回答时长：</Text>
           <InputNumber value={answerDuration} onChange={(v) => setAnswerDuration(v ?? 30)} min={10} max={120} step={5} suffix="秒" disabled={phase !== 'idle'} style={{ width: 140 }} />
         </Space>
@@ -406,7 +435,7 @@ export default function DigitalDefense() {
       </Button>
 
       {/* Video / Avatar area */}
-      {phase !== 'idle' && (
+      {phase !== 'idle' && phase !== 'done' && (
         <Card style={{ marginBottom: 24, textAlign: 'center' }}>
           <video
             ref={videoRef}
@@ -417,25 +446,40 @@ export default function DigitalDefense() {
               margin: '0 auto',
             }}
           />
+
+          {/* Loading state */}
           {phase === 'loading' && (
             <div style={{ padding: 40 }}>
               <Spin size="large" />
               <div style={{ marginTop: 16 }}>
                 <Text type="secondary">
-                  {provider === 'heygen' ? '正在生成数字人视频…' : '数字人评委正在入场…'}
+                  {provider === 'heygen' ? '正在准备数字人视频…' : '数字人评委正在入场…'}
                 </Text>
               </div>
             </div>
           )}
-          {phase === 'speaking' && heygenPolling && (
+
+          {/* HeyGen polling progress */}
+          {(phase === 'speaking' || phase === 'feedback') && heygenPolling && (
             <div style={{ padding: 16 }}>
-              <Progress percent={heygenProgress} status="active" />
-              <Text type="secondary">HeyGen 视频渲染中，请稍候…</Text>
+              <Progress percent={Math.round(heygenProgress)} status="active" />
+              <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
+                {phase === 'speaking' ? 'HeyGen 提问视频渲染中…' : 'HeyGen 反馈视频渲染中…'}
+              </Text>
             </div>
           )}
+
+          {/* Speaking indicator (non-polling) */}
           {phase === 'speaking' && !heygenPolling && (
             <div style={{ marginTop: 12 }}>
               <Tag icon={<SoundOutlined />} color="processing">数字人评委正在提问…</Tag>
+            </div>
+          )}
+
+          {/* Feedback indicator (non-polling) */}
+          {phase === 'feedback' && !heygenPolling && (
+            <div style={{ marginTop: 12 }}>
+              <Tag icon={<RobotOutlined />} color="processing">数字人评委正在给出反馈…</Tag>
             </div>
           )}
         </Card>
@@ -450,9 +494,13 @@ export default function DigitalDefense() {
           </div>
           <Text type="secondary">正在录音，请回答评委问题</Text>
           <div style={{ marginTop: 16 }}><AudioWaveform stream={audioStream} height={60} /></div>
+          <Button type="primary" danger onClick={doStopAndSubmit} style={{ marginTop: 16 }}>
+            提前结束回答
+          </Button>
         </Card>
       )}
 
+      {/* Processing */}
       {phase === 'processing' && (
         <Card style={{ marginBottom: 24, textAlign: 'center', padding: 24 }}>
           <Spin size="large" />
@@ -460,21 +508,10 @@ export default function DigitalDefense() {
         </Card>
       )}
 
-      {phase === 'feedback' && (
-        <Card style={{ marginBottom: 24, textAlign: 'center' }}>
-          {heygenPolling && <Progress percent={heygenProgress} status="active" style={{ marginBottom: 12 }} />}
-          <Tag icon={<RobotOutlined />} color="processing">数字人评委正在给出反馈…</Tag>
-        </Card>
-      )}
-
+      {/* Done */}
       {phase === 'done' && (
         <Result status="success" title="问辩完成" subTitle="评委反馈已记录，可在上方查看历史记录" style={{ marginBottom: 24 }} />
       )}
     </div>
   );
-}
-
-// Suppress console noise for non-critical errors
-function logger_warn(err: unknown) {
-  console.warn('[DigitalDefense]', err);
 }
