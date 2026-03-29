@@ -17,6 +17,9 @@ import {
   Select,
   Image,
   Modal,
+  Switch,
+  Form,
+  Input,
 } from 'antd';
 import {
   SoundOutlined,
@@ -29,6 +32,7 @@ import {
   StopOutlined,
   DeleteOutlined,
   UserOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import { LiveAvatarSession, SessionEvent, SessionState, AgentEventsEnum } from '@heygen/liveavatar-web-sdk';
 import BackButton from '@/components/BackButton';
@@ -38,7 +42,7 @@ import FeedbackTypeModal from '@/components/FeedbackTypeModal';
 import VideoTaskStatus from '@/components/VideoTaskStatus';
 import { defenseApi, projectApi } from '@/services/api';
 import { msg } from '@/utils/messageHolder';
-import type { DefenseRecord, VideoTask, DefenseQuestion } from '@/types';
+import type { DefenseRecord, VideoTask, DefenseQuestion, AvatarInfo, VideoGenerationOptions, PhotoAvatarCreateParams } from '@/types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -89,7 +93,7 @@ export default function DigitalDefense() {
   const feedbackPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── History video playback state ──────────────────────────
-  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
+  const [playingRecordVideo, setPlayingRecordVideo] = useState<{ recordId: string; type: 'question' | 'feedback' } | null>(null);
   const [videoErrors, setVideoErrors] = useState<Set<string>>(new Set());
   const [recordVideoTasks, setRecordVideoTasks] = useState<Record<string, VideoTask>>({});
 
@@ -99,12 +103,26 @@ export default function DigitalDefense() {
 
   // ── Avatar/Voice customization state ──────────────────────
   const [heygenVoices, setHeygenVoices] = useState<Array<{ voice_id: string; name: string; language: string; gender: string; preview_audio: string; is_custom: boolean }>>([]);
-  const [heygenCharacters, setHeygenCharacters] = useState<Array<{ id: string; name: string; preview_image_url: string; type: string }>>([]);
+  const [heygenCharacters, setHeygenCharacters] = useState<AvatarInfo[]>([]);
   const [liveAvatarList, setLiveAvatarList] = useState<Array<{ id: string; name: string; preview_image_url: string }>>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | undefined>(undefined);
   const [selectedLiveAvatarId, setSelectedLiveAvatarId] = useState<string | undefined>(undefined);
   const [loadingResources, setLoadingResources] = useState(false);
+  const [defaultAvatarId, setDefaultAvatarId] = useState('');
+  const [defaultVoiceId, setDefaultVoiceId] = useState('');
+
+  // ── Video options state ───────────────────────────────────
+  const [voiceLocale, setVoiceLocale] = useState('zh-CN');
+  const [resolution, setResolution] = useState('720p');
+  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [expressiveness, setExpressiveness] = useState('medium');
+  const [removeBackground, setRemoveBackground] = useState(false);
+
+  // ── Photo Avatar creation state ───────────────────────────
+  const [photoAvatarModalOpen, setPhotoAvatarModalOpen] = useState(false);
+  const [photoAvatarCreating, setPhotoAvatarCreating] = useState(false);
+  const [photoAvatarForm] = Form.useForm();
 
   // ── Fullscreen video playback state ───────────────────────
   const [fullscreenVideo, setFullscreenVideo] = useState(false);
@@ -169,17 +187,15 @@ export default function DigitalDefense() {
     setLoadingResources(true);
     const loadHeygenResources = async () => {
       try {
-        const [voices, photos, avatars] = await Promise.all([
+        const [voices, avatars, defaults] = await Promise.all([
           defenseApi.listHeygenVoices(projectId),
-          defenseApi.listHeygenTalkingPhotos(projectId),
           defenseApi.listHeygenAvatars(projectId),
+          defenseApi.getAvatarDefaults(projectId),
         ]);
         setHeygenVoices(voices);
-        const chars = [
-          ...photos.map((p) => ({ ...p, type: 'talking_photo' })),
-          ...avatars.map((a) => ({ ...a, type: 'avatar' })),
-        ];
-        setHeygenCharacters(chars);
+        setHeygenCharacters(avatars);
+        setDefaultAvatarId(defaults.heygen_video_avatar_id || '');
+        setDefaultVoiceId(defaults.heygen_video_voice_id || '');
       } catch { /* silent */ }
     };
     const loadLiveAvatarResources = async () => {
@@ -447,10 +463,18 @@ export default function DigitalDefense() {
       const task = await defenseApi.generateQuestionVideo(projectId, {
         avatar_id: selectedCharacterId || undefined,
         voice_id: selectedVoiceId || undefined,
+        avatar_type: selectedAvatarType,
+        resolution,
+        aspect_ratio: aspectRatio,
+        expressiveness,
+        remove_background: removeBackground,
+        voice_locale: voiceLocale,
       });
       setQuestionTask(task);
-      if (task.status === 'completed' && task.persistent_url) {
-        // Reused existing video — skip polling, go straight to ready
+      if (task.is_reused) {
+        msg.success('复用已有视频，无需重新生成');
+        setPhase('ready');
+      } else if (task.status === 'completed' && task.persistent_url) {
         msg.success('复用已有视频，无需重新生成');
         setPhase('ready');
       } else {
@@ -460,7 +484,7 @@ export default function DigitalDefense() {
     } catch {
       msg.error('生成提问视频失败');
     }
-  }, [projectId, selectedCharacterId, selectedVoiceId, startTaskPolling]);
+  }, [projectId, selectedCharacterId, selectedVoiceId, selectedAvatarType, resolution, aspectRatio, expressiveness, removeBackground, voiceLocale, startTaskPolling]);
 
   // ── Start defense with pre-generated video (heygen) ───────
   const handleStartWithVideo = useCallback(async () => {
@@ -555,13 +579,15 @@ export default function DigitalDefense() {
   }, [projectId, projectName, startRecording]);
 
   // ── History: toggle video playback ────────────────────────
-  const handlePlayVideo = useCallback((taskId: string) => {
-    setPlayingVideoId((prev) => (prev === taskId ? null : taskId));
+  const handlePlayVideo = useCallback((recordId: string, type: 'question' | 'feedback') => {
+    setPlayingRecordVideo((prev) =>
+      prev?.recordId === recordId && prev.type === type ? null : { recordId, type },
+    );
   }, []);
 
   const handleVideoError = useCallback((taskId: string) => {
     setVideoErrors((prev) => new Set(prev).add(taskId));
-    setPlayingVideoId(null);
+    setPlayingRecordVideo(null);
   }, []);
 
   const handleDeleteRecord = useCallback(async (recordId: string) => {
@@ -576,6 +602,7 @@ export default function DigitalDefense() {
   }, [projectId]);
 
   // ── Derived state ─────────────────────────────────────────
+  const selectedAvatarType = heygenCharacters.find(c => c.id === selectedCharacterId)?.avatar_type;
   const isHeygen = provider === 'heygen';
   const hasQuestions = questions.length > 0;
   const hasActiveTask = questionTask?.status === 'pending' || questionTask?.status === 'processing';
@@ -640,32 +667,81 @@ export default function DigitalDefense() {
             <Flex gap={12} wrap="wrap">
               <div style={{ flex: '1 1 45%', minWidth: 200 }}>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>数字人形象</Text>
-                <Select
-                  placeholder="默认形象"
-                  value={selectedCharacterId}
-                  onChange={setSelectedCharacterId}
-                  allowClear
-                  disabled={phase !== 'idle'}
-                  loading={loadingResources}
-                  style={{ width: '100%' }}
-                  optionLabelProp="label"
-                >
-                  {heygenCharacters.map((c) => (
-                    <Select.Option key={c.id} value={c.id} label={c.name || c.id}>
-                      <Flex align="center" gap={8}>
-                        {c.preview_image_url ? (
-                          <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} />
-                        ) : (
-                          <UserOutlined style={{ fontSize: 20, color: '#999' }} />
-                        )}
-                        <div>
-                          <div style={{ fontSize: 13 }}>{c.name || c.id}</div>
-                          <div style={{ fontSize: 11, color: '#999' }}>{c.type === 'talking_photo' ? 'Talking Photo' : 'Avatar'}</div>
-                        </div>
-                      </Flex>
-                    </Select.Option>
-                  ))}
-                </Select>
+                <Flex gap={8}>
+                  <Select
+                    placeholder="默认形象"
+                    value={selectedCharacterId}
+                    onChange={setSelectedCharacterId}
+                    allowClear
+                    disabled={phase !== 'idle'}
+                    loading={loadingResources}
+                    style={{ flex: 1 }}
+                    optionLabelProp="label"
+                    virtual
+                    listHeight={300}
+                  >
+                    {(() => {
+                      const myAvatars = heygenCharacters.filter(c => c.id && c.is_custom);
+                      const publicAvatars = heygenCharacters.filter(c => c.id && !c.is_custom);
+                      return (
+                        <>
+                          {myAvatars.length > 0 && (
+                            <Select.OptGroup label="我的">
+                              {myAvatars.map((c, idx) => {
+                                const isDefault = c.id === defaultAvatarId;
+                                const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
+                                const typeLabel = c.avatar_type === 'photo_avatar' ? 'Photo Avatar' : 'Digital Twin';
+                                return (
+                                  <Select.Option key={c.id || `my-${idx}`} value={c.id} label={label}>
+                                    <Flex align="center" gap={8}>
+                                      {c.preview_image_url ? (
+                                        <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
+                                      ) : (
+                                        <UserOutlined style={{ fontSize: 20, color: '#999' }} />
+                                      )}
+                                      <div>
+                                        <div style={{ fontSize: 13 }}>{label}</div>
+                                        <div style={{ fontSize: 11, color: '#999' }}>
+                                          <Tag color={c.avatar_type === 'photo_avatar' ? 'blue' : 'purple'} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 0 }}>{typeLabel}</Tag>
+                                        </div>
+                                      </div>
+                                    </Flex>
+                                  </Select.Option>
+                                );
+                              })}
+                            </Select.OptGroup>
+                          )}
+                          {publicAvatars.length > 0 && (
+                            <Select.OptGroup label="公共">
+                              {publicAvatars.map((c, idx) => {
+                                const isDefault = c.id === defaultAvatarId;
+                                const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
+                                return (
+                                  <Select.Option key={c.id || `pub-${idx}`} value={c.id} label={label}>
+                                    <Flex align="center" gap={8}>
+                                      {c.preview_image_url ? (
+                                        <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
+                                      ) : (
+                                        <UserOutlined style={{ fontSize: 20, color: '#999' }} />
+                                      )}
+                                      <div>
+                                        <div style={{ fontSize: 13 }}>{label}</div>
+                                        <div style={{ fontSize: 11, color: '#999' }}>{c.avatar_type === 'photo_avatar' ? 'Photo Avatar' : 'Digital Twin'}</div>
+                                      </div>
+                                    </Flex>
+                                  </Select.Option>
+                                );
+                              })}
+                            </Select.OptGroup>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </Select>
+                  <Button icon={<PlusOutlined />} onClick={() => setPhotoAvatarModalOpen(true)} disabled={phase !== 'idle'}>
+                    创建
+                  </Button>
+                </Flex>
               </div>
               <div style={{ flex: '1 1 45%', minWidth: 200 }}>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>语音音色</Text>
@@ -679,18 +755,55 @@ export default function DigitalDefense() {
                   style={{ width: '100%' }}
                   showSearch
                   optionFilterProp="label"
+                  virtual
+                  listHeight={300}
                 >
-                  {heygenVoices.map((v) => (
-                    <Select.Option key={v.voice_id} value={v.voice_id} label={v.name}>
-                      <Flex align="center" gap={8}>
-                        <SoundOutlined />
-                        <div>
-                          <div style={{ fontSize: 13 }}>{v.name}{v.is_custom ? ' ⭐' : ''}</div>
-                          <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
-                        </div>
-                      </Flex>
-                    </Select.Option>
-                  ))}
+                  {(() => {
+                    const myVoices = heygenVoices.filter(v => v.is_custom);
+                    const publicVoices = heygenVoices.filter(v => !v.is_custom);
+                    return (
+                      <>
+                        {myVoices.length > 0 && (
+                          <Select.OptGroup label="我的">
+                            {myVoices.map((v) => {
+                              const isDefault = v.voice_id === defaultVoiceId;
+                              const label = v.name + (isDefault ? '（默认）' : '');
+                              return (
+                                <Select.Option key={v.voice_id} value={v.voice_id} label={label}>
+                                  <Flex align="center" gap={8}>
+                                    <SoundOutlined />
+                                    <div>
+                                      <div style={{ fontSize: 13 }}>{label}</div>
+                                      <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
+                                    </div>
+                                  </Flex>
+                                </Select.Option>
+                              );
+                            })}
+                          </Select.OptGroup>
+                        )}
+                        {publicVoices.length > 0 && (
+                          <Select.OptGroup label="公共">
+                            {publicVoices.map((v) => {
+                              const isDefault = v.voice_id === defaultVoiceId;
+                              const label = v.name + (isDefault ? '（默认）' : '');
+                              return (
+                                <Select.Option key={v.voice_id} value={v.voice_id} label={label}>
+                                  <Flex align="center" gap={8}>
+                                    <SoundOutlined />
+                                    <div>
+                                      <div style={{ fontSize: 13 }}>{label}</div>
+                                      <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
+                                    </div>
+                                  </Flex>
+                                </Select.Option>
+                              );
+                            })}
+                          </Select.OptGroup>
+                        )}
+                      </>
+                    );
+                  })()}
                 </Select>
               </div>
             </Flex>
@@ -705,6 +818,47 @@ export default function DigitalDefense() {
               ) : null;
             })()}
 
+            {/* Video options panel */}
+            <Flex gap={12} wrap="wrap" align="center">
+              <div>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>语种</Text>
+                <Select value={voiceLocale} onChange={setVoiceLocale} disabled={phase !== 'idle'} style={{ width: 120 }}>
+                  <Select.Option value="zh-CN">中文</Select.Option>
+                  <Select.Option value="en-US">English</Select.Option>
+                  <Select.Option value="ja-JP">日本語</Select.Option>
+                  <Select.Option value="ko-KR">한국어</Select.Option>
+                </Select>
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>分辨率</Text>
+                <Select value={resolution} onChange={setResolution} disabled={phase !== 'idle'} style={{ width: 100 }}>
+                  <Select.Option value="1080p">1080p</Select.Option>
+                  <Select.Option value="720p">720p</Select.Option>
+                </Select>
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>宽高比</Text>
+                <Select value={aspectRatio} onChange={setAspectRatio} disabled={phase !== 'idle'} style={{ width: 100 }}>
+                  <Select.Option value="16:9">16:9</Select.Option>
+                  <Select.Option value="9:16">9:16</Select.Option>
+                </Select>
+              </div>
+              {selectedAvatarType === 'photo_avatar' && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>表情丰富度</Text>
+                  <Select value={expressiveness} onChange={setExpressiveness} disabled={phase !== 'idle'} style={{ width: 100 }}>
+                    <Select.Option value="low">低</Select.Option>
+                    <Select.Option value="medium">中</Select.Option>
+                    <Select.Option value="high">高</Select.Option>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>移除背景</Text>
+                <Switch checked={removeBackground} onChange={setRemoveBackground} disabled={phase !== 'idle'} />
+              </div>
+            </Flex>
+
             <Flex align="center" gap={12} wrap="wrap">
               {showGenerateBtn && (
                 <Button
@@ -718,7 +872,10 @@ export default function DigitalDefense() {
                 </Button>
               )}
               {questionTask && (
-                <VideoTaskStatus status={questionTask.status} persistentUrl={questionTask.persistent_url} />
+                <>
+                  {questionTask.is_reused && <Tag color="cyan">已复用</Tag>}
+                  <VideoTaskStatus status={questionTask.status} persistentUrl={questionTask.persistent_url} />
+                </>
               )}
             </Flex>
 
@@ -801,9 +958,9 @@ export default function DigitalDefense() {
                       <Button
                         size="small"
                         icon={<PlayCircleOutlined />}
-                        onClick={() => handlePlayVideo(qTask.id)}
+                        onClick={() => handlePlayVideo(record.id, 'question')}
                       >
-                        {playingVideoId === qTask.id ? '收起视频' : '播放提问视频'}
+                        {playingRecordVideo?.recordId === record.id && playingRecordVideo.type === 'question' ? '收起视频' : '播放提问视频'}
                       </Button>
                     )}
                     {qTask && videoErrors.has(qTask.id) && (
@@ -814,9 +971,9 @@ export default function DigitalDefense() {
                       <Button
                         size="small"
                         icon={<PlayCircleOutlined />}
-                        onClick={() => handlePlayVideo(fTask.id)}
+                        onClick={() => handlePlayVideo(record.id, 'feedback')}
                       >
-                        {playingVideoId === fTask.id ? '收起视频' : '播放反馈视频'}
+                        {playingRecordVideo?.recordId === record.id && playingRecordVideo.type === 'feedback' ? '收起视频' : '播放反馈视频'}
                       </Button>
                     )}
                     {fTask && videoErrors.has(fTask.id) && (
@@ -829,21 +986,20 @@ export default function DigitalDefense() {
                   </Flex>
 
                   {/* Inline video player */}
-                  {playingVideoId && (playingVideoId === qTask?.id || playingVideoId === fTask?.id) && (
-                    <div style={{ marginTop: 8 }}>
-                      <video
-                        src={
-                          playingVideoId === qTask?.id
-                            ? qTask?.persistent_url ?? undefined
-                            : fTask?.persistent_url ?? undefined
-                        }
-                        controls
-                        autoPlay
-                        style={{ width: '100%', maxWidth: 480, borderRadius: 8, background: '#000' }}
-                        onError={() => handleVideoError(playingVideoId)}
-                      />
-                    </div>
-                  )}
+                  {playingRecordVideo?.recordId === record.id && (() => {
+                    const task = playingRecordVideo.type === 'question' ? qTask : fTask;
+                    return task?.persistent_url ? (
+                      <div style={{ marginTop: 8 }}>
+                        <video
+                          src={task.persistent_url}
+                          controls
+                          autoPlay
+                          style={{ width: '100%', maxWidth: 480, borderRadius: 8, background: '#000' }}
+                          onError={() => handleVideoError(task.id)}
+                        />
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               );
             })}
@@ -1011,25 +1167,143 @@ export default function DigitalDefense() {
         footer={null}
         closable={false}
         centered
-        width="90vw"
-        styles={{ body: { padding: 0, background: '#000', borderRadius: 8, overflow: 'hidden' } }}
+        width="100vw"
+        styles={{
+          body: { padding: 0, background: '#000', overflow: 'hidden', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+          content: { padding: 0, borderRadius: 0, background: '#000', maxWidth: '100vw', top: 0 },
+          wrapper: { overflow: 'hidden' },
+        }}
+        style={{ top: 0, padding: 0, maxWidth: '100vw' }}
         destroyOnHidden
       >
-        <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', background: '#000' }}>
+        <div style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
           <video
             ref={fullscreenVideoRef}
             autoPlay
             playsInline
-            style={{ width: '100%', maxHeight: '80vh', borderRadius: 8 }}
-          >
-            <track kind="captions" />
-          </video>
-          <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)' }}>
-            <Tag icon={<SoundOutlined />} color="processing" style={{ fontSize: 14, padding: '4px 12px' }}>
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+          />
+          <div style={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)' }}>
+            <Tag icon={<SoundOutlined />} color="processing" style={{ fontSize: 16, padding: '6px 16px' }}>
               数字人评委正在提问…
             </Tag>
           </div>
         </div>
+      </Modal>
+
+      {/* Photo Avatar creation modal */}
+      <Modal
+        title="创建 Photo Avatar"
+        open={photoAvatarModalOpen}
+        onCancel={() => { setPhotoAvatarModalOpen(false); photoAvatarForm.resetFields(); }}
+        onOk={() => photoAvatarForm.submit()}
+        confirmLoading={photoAvatarCreating}
+        okText="创建"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          description="如需效果更好的 Digital Twin，请前往 HeyGen 官网创建"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        <Form
+          form={photoAvatarForm}
+          layout="vertical"
+          onFinish={async (values: PhotoAvatarCreateParams) => {
+            if (!projectId) return;
+            setPhotoAvatarCreating(true);
+            try {
+              const { generation_id } = await defenseApi.createPhotoAvatar(projectId, values);
+              msg.success('Photo Avatar 创建请求已提交');
+              setPhotoAvatarModalOpen(false);
+              photoAvatarForm.resetFields();
+              // Poll for creation status
+              const pollStatus = async () => {
+                let attempts = 0;
+                const maxAttempts = 120;
+                const interval = setInterval(async () => {
+                  attempts++;
+                  try {
+                    const res = await defenseApi.checkPhotoAvatarStatus(projectId, generation_id);
+                    if (res.status === 'completed') {
+                      clearInterval(interval);
+                      msg.success('Photo Avatar 创建完成，请刷新页面查看');
+                    } else if (res.status === 'failed') {
+                      clearInterval(interval);
+                      msg.error('Photo Avatar 创建失败');
+                    }
+                  } catch { /* continue */ }
+                  if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    msg.warning('Photo Avatar 创建超时，请稍后手动查询');
+                  }
+                }, 5000);
+              };
+              pollStatus();
+            } catch {
+              msg.error('创建 Photo Avatar 失败');
+            } finally {
+              setPhotoAvatarCreating(false);
+            }
+          }}
+        >
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+            <Input placeholder="输入 Avatar 名称" />
+          </Form.Item>
+          <Flex gap={12} wrap="wrap">
+            <Form.Item name="age" label="年龄段" rules={[{ required: true, message: '请选择' }]} style={{ flex: 1, minWidth: 140 }}>
+              <Select placeholder="选择年龄段">
+                <Select.Option value="Young Adult">青年</Select.Option>
+                <Select.Option value="Early Middle Age">中年前期</Select.Option>
+                <Select.Option value="Late Middle Age">中年后期</Select.Option>
+                <Select.Option value="Senior">老年</Select.Option>
+                <Select.Option value="Unspecified">不指定</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item name="gender" label="性别" rules={[{ required: true, message: '请选择' }]} style={{ flex: 1, minWidth: 140 }}>
+              <Select placeholder="选择性别">
+                <Select.Option value="Woman">女</Select.Option>
+                <Select.Option value="Man">男</Select.Option>
+                <Select.Option value="Unspecified">不指定</Select.Option>
+              </Select>
+            </Form.Item>
+          </Flex>
+          <Form.Item name="ethnicity" label="种族" rules={[{ required: true, message: '请输入种族' }]}>
+            <Input placeholder="如：Asian, Caucasian 等" />
+          </Form.Item>
+          <Flex gap={12} wrap="wrap">
+            <Form.Item name="orientation" label="朝向" rules={[{ required: true, message: '请选择' }]} style={{ flex: 1, minWidth: 120 }}>
+              <Select placeholder="选择朝向">
+                <Select.Option value="square">正面</Select.Option>
+                <Select.Option value="horizontal">水平</Select.Option>
+                <Select.Option value="vertical">垂直</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item name="pose" label="姿势" rules={[{ required: true, message: '请选择' }]} style={{ flex: 1, minWidth: 120 }}>
+              <Select placeholder="选择姿势">
+                <Select.Option value="half_body">半身</Select.Option>
+                <Select.Option value="close_up">特写</Select.Option>
+                <Select.Option value="full_body">全身</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item name="style" label="风格" rules={[{ required: true, message: '请选择' }]} style={{ flex: 1, minWidth: 120 }}>
+              <Select placeholder="选择风格">
+                <Select.Option value="Realistic">写实</Select.Option>
+                <Select.Option value="Pixar">Pixar</Select.Option>
+                <Select.Option value="Cinematic">电影</Select.Option>
+                <Select.Option value="Vintage">复古</Select.Option>
+                <Select.Option value="Noir">黑色</Select.Option>
+                <Select.Option value="Cyberpunk">赛博朋克</Select.Option>
+                <Select.Option value="Unspecified">不指定</Select.Option>
+              </Select>
+            </Form.Item>
+          </Flex>
+          <Form.Item name="appearance" label="外观描述" rules={[{ required: true, message: '请输入外观描述' }, { max: 1000, message: '最多 1000 字符' }]}>
+            <Input.TextArea rows={3} placeholder="描述 Avatar 的外观特征（最多 1000 字符）" maxLength={1000} showCount />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

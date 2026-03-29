@@ -13,14 +13,19 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.services.avatar.base import AvatarVideoResult, VideoAvatarProvider
+from app.services.prompt_service import prompt_service
 
 logger = logging.getLogger(__name__)
 
 HEYGEN_VIDEO_GENERATE_URL = "https://api.heygen.com/v2/video/generate"
+HEYGEN_NEW_VIDEO_URL = "https://api.heygen.com/v2/videos"
 HEYGEN_VIDEO_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
 HEYGEN_VOICES_URL = "https://api.heygen.com/v2/voices"
 HEYGEN_TALKING_PHOTOS_URL = "https://api.heygen.com/v1/talking_photo.list"
 HEYGEN_AVATARS_URL = "https://api.heygen.com/v2/avatars"
+HEYGEN_ASSET_URL = "https://api.heygen.com/v2/asset"
+HEYGEN_PHOTO_AVATAR_URL = "https://api.heygen.com/v2/photo_avatar/photo/generate"
+HEYGEN_PHOTO_AVATAR_STATUS_URL = "https://api.heygen.com/v2/photo_avatar/photo"
 
 
 class HeyGenVideoService(VideoAvatarProvider):
@@ -30,52 +35,59 @@ class HeyGenVideoService(VideoAvatarProvider):
     def provider_name(self) -> str:
         return "heygen"
 
-    async def generate_video(self, text: str, avatar_id: str | None = None, voice_id: str | None = None) -> AvatarVideoResult:
-        """调用 HeyGen v2/video/generate 生成数字人视频。"""
+    async def generate_video(
+        self,
+        text: str,
+        avatar_id: str | None = None,
+        voice_id: str | None = None,
+        avatar_type: str | None = None,
+        resolution: str = "720p",
+        aspect_ratio: str = "16:9",
+        expressiveness: str = "medium",
+        remove_background: bool = False,
+        voice_locale: str = "zh-CN",
+    ) -> AvatarVideoResult:
+        """调用 HeyGen POST /v2/videos 生成数字人视频。
+
+        Photo Avatar: 附加 motion_prompt + expressiveness
+        Digital Twin: 省略 motion_prompt + expressiveness
+        始终开启 caption: true
+        """
         if not settings.heygen_api_key:
             raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
 
-        # 使用 Video API 专用的 avatar_id 和 voice_id
         aid = avatar_id or settings.heygen_video_avatar_id
         vid = voice_id or settings.heygen_video_voice_id
 
-        # 判断 character type：如果 ID 是 hex 格式（32位）则为 talking_photo，否则为 avatar
-        is_talking_photo = len(aid) == 32 and all(c in '0123456789abcdef' for c in aid)
-
-        if is_talking_photo:
-            character = {
-                "type": "talking_photo",
-                "talking_photo_id": aid,
-                "talking_style": settings.heygen_video_talking_style,
-            }
-        else:
-            character = {
-                "type": "avatar",
-                "avatar_id": aid,
-                "avatar_style": "normal",
-            }
-
-        payload = {
-            "video_inputs": [
-                {
-                    "character": character,
-                    "voice": {
-                        "type": "text",
-                        "input_text": text,
-                        "voice_id": vid,
-                    },
-                }
-            ],
-            "dimension": {"width": 720, "height": 480},
-            "caption": settings.heygen_video_caption,
+        payload: dict = {
+            "avatar_id": aid,
+            "script": {
+                "type": "text",
+                "input": text,
+                "voice_id": vid,
+                "voice_settings": {"locale": voice_locale},
+            },
+            "caption": True,
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+            "remove_background": remove_background,
         }
 
-        logger.info("HeyGen video generate: avatar_id=%s, voice_id=%s, text_len=%d", aid, vid, len(text))
+        # Photo Avatar: add motion_prompt and expressiveness
+        if avatar_type == "photo_avatar":
+            motion_prompt = prompt_service.load_defense_template("motion_prompt")
+            payload["motion_prompt"] = motion_prompt
+            payload["expressiveness"] = expressiveness
+
+        logger.info(
+            "HeyGen video generate (v2/videos): avatar_id=%s, voice_id=%s, avatar_type=%s, text_len=%d",
+            aid, vid, avatar_type, len(text),
+        )
 
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
-                    HEYGEN_VIDEO_GENERATE_URL,
+                    HEYGEN_NEW_VIDEO_URL,
                     headers={
                         "X-Api-Key": settings.heygen_api_key,
                         "Content-Type": "application/json",
@@ -134,6 +146,149 @@ class HeyGenVideoService(VideoAvatarProvider):
             video_url=video_url,
             provider="heygen",
         )
+
+    async def upload_asset(self, image_bytes: bytes, filename: str = "bg.png") -> str:
+        """通过 POST https://api.heygen.com/v2/asset 上传图片资源，返回 asset_id。"""
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    HEYGEN_ASSET_URL,
+                    headers={"X-Api-Key": settings.heygen_api_key},
+                    files={"file": (filename, image_bytes, "image/png")},
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error("HeyGen asset upload failed: %s %s", e.response.status_code, e.response.text[:500])
+            raise HTTPException(status_code=502, detail="HeyGen 资源上传失败") from e
+        except httpx.RequestError as e:
+            logger.error("HeyGen asset upload network error: %s", e)
+            raise HTTPException(status_code=502, detail="HeyGen 服务不可用") from e
+
+        body = resp.json()
+        asset_id = body.get("data", {}).get("asset_id")
+        if not asset_id:
+            err_msg = body.get("error") or body.get("message") or str(body)
+            logger.error("HeyGen asset upload: no asset_id. response=%s", err_msg[:300])
+            raise HTTPException(status_code=502, detail=f"HeyGen 资源上传响应异常: {err_msg[:100]}")
+
+        logger.info("HeyGen asset upload success: asset_id=%s", asset_id)
+        return asset_id
+
+    async def generate_multi_scene_video(
+        self,
+        scenes: list[dict],
+        avatar_id: str,
+        voice_id: str,
+        avatar_type: str,
+        resolution: str = "720p",
+        aspect_ratio: str = "16:9",
+        expressiveness: str = "medium",
+        voice_locale: str = "zh-CN",
+    ) -> AvatarVideoResult:
+        """使用 Studio API (POST /v2/video/generate) 生成多场景视频。
+
+        scenes format:
+        [
+            {"text": str, "background_asset_id": str | None},
+            ...
+        ]
+        First scene (intro) has background_asset_id=None → use color background "#1a1a2e"
+        Subsequent scenes have background_asset_id → use image background with avatar scaled/offset
+        """
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+
+        # Build video_inputs from scenes
+        video_inputs: list[dict] = []
+        for scene in scenes:
+            text = scene["text"]
+            bg_asset_id = scene.get("background_asset_id")
+
+            # Character config
+            character: dict = {
+                "type": "avatar",
+                "avatar_id": avatar_id,
+            }
+
+            if bg_asset_id is None:
+                # Intro scene: full-size avatar, color background
+                character["scale"] = 1.0
+                background: dict = {"type": "color", "value": "#1a1a2e"}
+            else:
+                # Question scene: scaled-down avatar offset to the left, image background
+                character["scale"] = 0.6
+                character["offset"] = {"x": -0.3, "y": 0.0}
+                background = {"type": "image", "image_asset_id": bg_asset_id}
+
+            # Voice config
+            voice: dict = {
+                "type": "text",
+                "input_text": text,
+                "voice_id": voice_id,
+            }
+            if voice_locale:
+                voice["voice_settings"] = {"locale": voice_locale}
+
+            video_inputs.append({
+                "character": character,
+                "voice": voice,
+                "background": background,
+            })
+
+        # Map resolution to dimension
+        dimension_map = {
+            "1080p": {"width": 1920, "height": 1080},
+            "720p": {"width": 1280, "height": 720},
+        }
+        dimension = dimension_map.get(resolution, {"width": 1280, "height": 720})
+
+        # Swap width/height for 9:16 aspect ratio
+        if aspect_ratio == "9:16":
+            dimension = {"width": dimension["height"], "height": dimension["width"]}
+
+        payload: dict = {
+            "video_inputs": video_inputs,
+            "dimension": dimension,
+            "caption": True,
+        }
+
+        logger.info(
+            "HeyGen multi-scene video generate (Studio API): avatar_id=%s, voice_id=%s, scenes=%d, resolution=%s",
+            avatar_id, voice_id, len(scenes), resolution,
+        )
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    HEYGEN_VIDEO_GENERATE_URL,
+                    headers={
+                        "X-Api-Key": settings.heygen_api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error("HeyGen multi-scene video generate failed: %s %s", e.response.status_code, e.response.text[:500])
+            raise HTTPException(status_code=502, detail="HeyGen 多场景视频生成失败") from e
+        except httpx.RequestError as e:
+            logger.error("HeyGen multi-scene video generate network error: %s", e)
+            raise HTTPException(status_code=502, detail="HeyGen 服务不可用") from e
+
+        body = resp.json()
+        video_id = body.get("data", {}).get("video_id")
+        if not video_id:
+            err_msg = body.get("error") or body.get("message") or str(body)
+            logger.error("HeyGen multi-scene video generate: no video_id. response=%s", err_msg[:300])
+            raise HTTPException(status_code=502, detail=f"HeyGen 多场景视频生成响应异常: {err_msg[:100]}")
+
+        logger.info("HeyGen multi-scene video generate success: video_id=%s", video_id)
+        return AvatarVideoResult(video_id=video_id, status="pending", provider="heygen")
 
     async def list_voices(self) -> list[dict]:
         """列出所有可用的 HeyGen 语音。"""
@@ -201,8 +356,29 @@ class HeyGenVideoService(VideoAvatarProvider):
             if isinstance(p, dict)
         ]
 
+    @staticmethod
+    def _map_avatar_type(raw_type: str) -> str:
+        """Map HeyGen API avatar_type to our internal type.
+
+        ``video_avatar`` → ``digital_twin``, ``photo_avatar`` stays as-is,
+        anything else passes through unchanged.
+        """
+        if raw_type == "video_avatar":
+            return "digital_twin"
+        return raw_type
+
     async def list_avatars(self) -> list[dict]:
-        """列出所有可用的 HeyGen Avatars。"""
+        """列出所有可用的 HeyGen Avatars，包含 avatar_type 和 is_custom 字段。
+
+        返回格式：
+        {
+            "id": str,           # avatar_id
+            "name": str,         # avatar_name
+            "preview_image_url": str,
+            "avatar_type": str,  # "photo_avatar" | "digital_twin"
+            "is_custom": bool,   # whether this is user's own avatar
+        }
+        """
         if not settings.heygen_api_key:
             raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
         try:
@@ -224,8 +400,71 @@ class HeyGenVideoService(VideoAvatarProvider):
                 "id": a.get("avatar_id", ""),
                 "name": a.get("avatar_name", ""),
                 "preview_image_url": a.get("preview_image_url", ""),
-                "type": "avatar",
+                "avatar_type": self._map_avatar_type(a.get("avatar_type", "")),
+                "is_custom": bool(a.get("is_custom", False)),
             }
             for a in avatars
             if isinstance(a, dict)
         ]
+
+    async def create_photo_avatar(self, params: dict) -> dict:
+        """调用 POST /v2/photo_avatar/photo/generate 创建 Photo Avatar。"""
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    HEYGEN_PHOTO_AVATAR_URL,
+                    headers={
+                        "X-Api-Key": settings.heygen_api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=params,
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error("HeyGen create photo avatar failed: %s %s", e.response.status_code, e.response.text[:500])
+            raise HTTPException(status_code=502, detail="HeyGen Photo Avatar 创建失败") from e
+        except httpx.RequestError as e:
+            logger.error("HeyGen create photo avatar network error: %s", e)
+            raise HTTPException(status_code=502, detail="HeyGen 服务不可用") from e
+
+        body = resp.json()
+        generation_id = body.get("data", {}).get("generation_id")
+        if not generation_id:
+            err_msg = body.get("error") or body.get("message") or str(body)
+            logger.error("HeyGen create photo avatar: no generation_id. response=%s", err_msg[:300])
+            raise HTTPException(status_code=502, detail=f"HeyGen Photo Avatar 创建响应异常: {err_msg[:100]}")
+
+        logger.info("HeyGen create photo avatar success: generation_id=%s", generation_id)
+        return {"generation_id": generation_id}
+
+    async def check_photo_avatar_status(self, generation_id: str) -> dict:
+        """调用 GET /v2/photo_avatar/photo/{generation_id} 查询创建状态。"""
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+
+        url = f"{HEYGEN_PHOTO_AVATAR_STATUS_URL}/{generation_id}"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    url,
+                    headers={"X-Api-Key": settings.heygen_api_key, "Accept": "application/json"},
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error("HeyGen check photo avatar status failed: %s %s", e.response.status_code, e.response.text[:500])
+            raise HTTPException(status_code=502, detail="HeyGen Photo Avatar 状态查询失败") from e
+        except httpx.RequestError as e:
+            logger.error("HeyGen check photo avatar status network error: %s", e)
+            raise HTTPException(status_code=502, detail="HeyGen 服务不可用") from e
+
+        body = resp.json()
+        data = body.get("data", {})
+        return {
+            "generation_id": generation_id,
+            "status": data.get("status", "unknown"),
+        }

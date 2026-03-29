@@ -353,7 +353,7 @@ export const tagApi = {
 
 // ── 数字人问辩 ───────────────────────────────────────────────
 
-import type { DefenseQuestion, DefenseRecord, VideoTask } from '@/types';
+import type { DefenseQuestion, DefenseRecord, VideoTask, AvatarInfo, VideoGenerationOptions, PhotoAvatarCreateParams } from '@/types';
 
 export const defenseApi = {
   // ── LiveAvatar 实时流式会话 ──
@@ -419,7 +419,7 @@ export const defenseApi = {
     ).then(r => r.data),
 
   listHeygenAvatars: (projectId: string) =>
-    api.get<Array<{ id: string; name: string; preview_image_url: string; type: string }>>(
+    api.get<AvatarInfo[]>(
       `/projects/${projectId}/defense/avatar/heygen/avatars`,
     ).then(r => r.data),
 
@@ -428,8 +428,13 @@ export const defenseApi = {
       `/projects/${projectId}/defense/avatar/liveavatar/avatars`,
     ).then(r => r.data),
 
+  getAvatarDefaults: (projectId: string) =>
+    api.get<{ heygen_video_avatar_id: string; heygen_video_voice_id: string }>(
+      `/projects/${projectId}/defense/avatar/defaults`,
+    ).then(r => r.data),
+
   // ── 视频任务 ──
-  generateQuestionVideo: (projectId: string, opts?: { avatar_id?: string; voice_id?: string }) =>
+  generateQuestionVideo: (projectId: string, opts?: VideoGenerationOptions) =>
     api.post<VideoTask>(`/projects/${projectId}/defense/video-tasks/generate-question`, opts || {}).then(r => r.data),
 
   generateFeedbackVideo: (projectId: string, defenseRecordId: string, feedbackText: string) =>
@@ -443,4 +448,16 @@ export const defenseApi = {
 
   getLatestQuestionTask: (projectId: string) =>
     api.get<VideoTask | null>(`/projects/${projectId}/defense/video-tasks/latest-question`).then(r => r.data),
+
+  // ── Photo Avatar ──
+  createPhotoAvatar: (projectId: string, params: PhotoAvatarCreateParams) =>
+    api.post<{ generation_id: string }>(
+      `/projects/${projectId}/defense/avatar/heygen/photo-avatar`,
+      params,
+    ).then(r => r.data),
+
+  checkPhotoAvatarStatus: (projectId: string, generationId: string) =>
+    api.get<{ generation_id: string; status: string }>(
+      `/projects/${projectId}/defense/avatar/heygen/photo-avatar/${generationId}`,
+    ).then(r => r.data),
 };

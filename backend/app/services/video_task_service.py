@@ -1,11 +1,13 @@
 """视频任务管理服务：创建、查询和管理 HeyGen 视频生成任务。"""
 
 import hashlib
+import json
 import logging
 
 from fastapi import HTTPException
 from supabase import Client
 
+from app.services.avatar.background_generator import BackgroundImageGenerator
 from app.services.avatar.heygen_video_service import HeyGenVideoService
 from app.services.prompt_service import prompt_service
 
@@ -25,18 +27,28 @@ class VideoTaskService:
     async def create_question_video_task(
         self, project_id: str, user_id: str, questions: list[dict],
         avatar_id: str | None = None, voice_id: str | None = None,
+        avatar_type: str | None = None,
+        resolution: str = "720p",
+        aspect_ratio: str = "16:9",
+        expressiveness: str = "medium",
+        remove_background: bool = False,
+        voice_locale: str = "zh-CN",
     ) -> dict:
-        """创建提问视频生成任务。
+        """创建提问视频生成任务（多场景）。
 
-        如果存在相同 config_hash（问题+形象+音色）的已完成视频，直接复用。
+        如果存在相同 config_hash（问题+形象+音色+所有视频选项）的已完成视频，直接复用。
+        否则为每个问题生成背景图片，构建多场景视频。
         """
         from app.config import settings as _settings
 
-        # 计算 config_hash = md5(sorted_questions | avatar_id | voice_id)
+        # 计算 config_hash = md5(sorted_questions | avatar | voice | 所有视频选项)
         sorted_contents = sorted(q["content"] for q in questions)
         effective_avatar = avatar_id or _settings.heygen_video_avatar_id
         effective_voice = voice_id or _settings.heygen_video_voice_id
-        hash_input = "|".join(sorted_contents) + f"||{effective_avatar}||{effective_voice}"
+        hash_input = "|".join(sorted_contents)
+        hash_input += f"||{effective_avatar}||{effective_voice}||{avatar_type}"
+        hash_input += f"||{resolution}||{aspect_ratio}||{expressiveness}"
+        hash_input += f"||{remove_background}||{voice_locale}"
         config_hash = hashlib.md5(hash_input.encode()).hexdigest()
 
         # 检查是否有可复用的已完成视频
@@ -54,33 +66,91 @@ class VideoTaskService:
             )
             if existing.data and existing.data[0].get("persistent_url"):
                 logger.info("复用已有视频: task_id=%s, config_hash=%s", existing.data[0]["id"], config_hash)
-                return existing.data[0]
+                result = existing.data[0]
+                result["is_reused"] = True
+                return result
         except Exception:
             logger.warning("查询可复用视频失败，将重新生成", exc_info=True)
 
-        # 加载话术模板
-        speech_template = prompt_service.load_defense_template("question_speech")
+        # ── 构建多场景 ──────────────────────────────────────
 
-        # 加载项目名称
+        # Scene 0: 开场白（纯色背景）
+        speech_template = prompt_service.load_defense_template("question_speech")
         project_name = await self._load_project_name(project_id)
 
-        # 格式化问题文本
+        # 格式化问题文本（用于开场白）
         parts: list[str] = []
         for i, q in enumerate(questions):
             ordinal = ORDINALS[i] if i < len(ORDINALS) else f"第{i + 1}"
             parts.append(f"{ordinal}，{q['content']}")
         questions_text = "；".join(parts)
 
-        # 替换模板占位符
         speech_text = speech_template.replace("{{project_name}}", project_name)
         speech_text = speech_text.replace("{{question_count}}", str(len(questions)))
         speech_text = speech_text.replace("{{questions_text}}", questions_text)
 
-        # 调用 HeyGen 生成视频
-        result = await self._heygen.generate_video(speech_text, avatar_id=avatar_id, voice_id=voice_id)
+        scenes: list[dict] = [
+            {"text": speech_text, "background_asset_id": None},
+        ]
+
+        # Scene 1..N: 每个问题独立场景（带背景图）
+        # 根据分辨率确定背景图尺寸
+        dimension_map = {
+            "1080p": (1920, 1080),
+            "720p": (1280, 720),
+        }
+        img_w, img_h = dimension_map.get(resolution, (1280, 720))
+        if aspect_ratio == "9:16":
+            img_w, img_h = img_h, img_w
+
+        bg_generator = BackgroundImageGenerator()
+
+        for i, q in enumerate(questions):
+            ordinal = ORDINALS[i] if i < len(ORDINALS) else f"第{i + 1}"
+            scene_text = f"{ordinal}，{q['content']}"
+
+            # 生成背景图并上传
+            bg_asset_id: str | None = None
+            try:
+                img_bytes = bg_generator.generate(
+                    question_number=i + 1,
+                    question_text=q["content"],
+                    width=img_w,
+                    height=img_h,
+                )
+                bg_asset_id = await self._heygen.upload_asset(
+                    img_bytes, filename=f"q{i + 1}_bg.png"
+                )
+            except Exception:
+                logger.warning(
+                    "问题 %d 背景图生成/上传失败，回退到纯色背景", i + 1, exc_info=True,
+                )
+
+            scenes.append({"text": scene_text, "background_asset_id": bg_asset_id})
+
+        # 调用多场景视频生成
+        gen_result = await self._heygen.generate_multi_scene_video(
+            scenes=scenes,
+            avatar_id=effective_avatar,
+            voice_id=effective_voice,
+            avatar_type=avatar_type or "",
+            resolution=resolution,
+            aspect_ratio=aspect_ratio,
+            expressiveness=expressiveness,
+            voice_locale=voice_locale,
+        )
 
         # 同时保留旧的 questions_hash 以兼容
         questions_hash = hashlib.md5("|".join(sorted_contents).encode()).hexdigest()
+
+        # 视频选项 JSONB
+        video_options = {
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+            "expressiveness": expressiveness,
+            "remove_background": remove_background,
+            "voice_locale": voice_locale,
+        }
 
         # 插入数据库记录
         try:
@@ -90,10 +160,12 @@ class VideoTaskService:
                     "project_id": project_id,
                     "user_id": user_id,
                     "video_type": "question",
-                    "heygen_video_id": result.video_id,
+                    "heygen_video_id": gen_result.video_id,
                     "status": "pending",
                     "questions_hash": questions_hash,
                     "config_hash": config_hash,
+                    "avatar_type": avatar_type,
+                    "video_options": json.dumps(video_options),
                 })
                 .execute()
             )
@@ -103,7 +175,9 @@ class VideoTaskService:
                 status_code=500, detail=f"创建视频任务失败: {exc}"
             ) from exc
 
-        return row.data[0]
+        task = row.data[0]
+        task["is_reused"] = False
+        return task
 
     async def create_feedback_video_task(
         self,
@@ -111,10 +185,37 @@ class VideoTaskService:
         user_id: str,
         defense_record_id: str,
         feedback_text: str,
+        avatar_id: str | None = None,
+        voice_id: str | None = None,
+        avatar_type: str | None = None,
+        resolution: str = "720p",
+        aspect_ratio: str = "16:9",
+        expressiveness: str = "medium",
+        remove_background: bool = False,
+        voice_locale: str = "zh-CN",
     ) -> dict:
         """创建反馈视频生成任务。"""
-        # 调用 HeyGen 生成视频
-        result = await self._heygen.generate_video(feedback_text)
+        # 调用 HeyGen 生成视频（单场景，使用新版 v2/videos API）
+        result = await self._heygen.generate_video(
+            feedback_text,
+            avatar_id=avatar_id,
+            voice_id=voice_id,
+            avatar_type=avatar_type,
+            resolution=resolution,
+            aspect_ratio=aspect_ratio,
+            expressiveness=expressiveness,
+            remove_background=remove_background,
+            voice_locale=voice_locale,
+        )
+
+        # 视频选项 JSONB
+        video_options = {
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+            "expressiveness": expressiveness,
+            "remove_background": remove_background,
+            "voice_locale": voice_locale,
+        }
 
         # 插入数据库记录
         try:
@@ -127,6 +228,8 @@ class VideoTaskService:
                     "heygen_video_id": result.video_id,
                     "status": "pending",
                     "defense_record_id": defense_record_id,
+                    "avatar_type": avatar_type,
+                    "video_options": json.dumps(video_options),
                 })
                 .execute()
             )

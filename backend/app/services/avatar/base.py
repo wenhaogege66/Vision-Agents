@@ -55,7 +55,18 @@ class VideoAvatarProvider(AvatarProvider):
         return "video"
 
     @abstractmethod
-    async def generate_video(self, text: str, avatar_id: str | None = None) -> AvatarVideoResult:
+    async def generate_video(
+        self,
+        text: str,
+        avatar_id: str | None = None,
+        voice_id: str | None = None,
+        avatar_type: str | None = None,
+        resolution: str = "720p",
+        aspect_ratio: str = "16:9",
+        expressiveness: str = "medium",
+        remove_background: bool = False,
+        voice_locale: str = "zh-CN",
+    ) -> AvatarVideoResult:
         """根据文本生成数字人视频。"""
 
     @abstractmethod

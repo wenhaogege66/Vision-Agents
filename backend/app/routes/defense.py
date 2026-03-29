@@ -10,6 +10,8 @@ from app.models.schemas import (
     DefenseQuestionResponse,
     DefenseRecordResponse,
     GenerateFeedbackVideoRequest,
+    GenerateQuestionVideoRequest,
+    PhotoAvatarCreateRequest,
     UserInfo,
     VideoTaskResponse,
 )
@@ -35,6 +37,19 @@ def _get_video_task_service(
 
 
 # ── 数字人资源列表 ────────────────────────────────────────────
+
+
+@router.get("/avatar/defaults")
+async def get_avatar_defaults(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+):
+    """返回默认的数字人形象和音色 ID。"""
+    from app.config import settings as _s
+    return {
+        "heygen_video_avatar_id": _s.heygen_video_avatar_id,
+        "heygen_video_voice_id": _s.heygen_video_voice_id,
+    }
 
 
 @router.get("/avatar/heygen/voices")
@@ -65,6 +80,29 @@ async def list_heygen_avatars(
     """列出 HeyGen Avatars。"""
     svc = HeyGenVideoService()
     return await svc.list_avatars()
+
+
+@router.post("/avatar/heygen/photo-avatar")
+async def create_photo_avatar(
+    project_id: str,
+    body: PhotoAvatarCreateRequest,
+    user: UserInfo = Depends(get_current_user),
+):
+    """创建 Photo Avatar。"""
+    svc = HeyGenVideoService()
+    result = await svc.create_photo_avatar(body.model_dump())
+    return result
+
+
+@router.get("/avatar/heygen/photo-avatar/{generation_id}")
+async def check_photo_avatar_status(
+    project_id: str,
+    generation_id: str,
+    user: UserInfo = Depends(get_current_user),
+):
+    """查询 Photo Avatar 创建状态。"""
+    svc = HeyGenVideoService()
+    return await svc.check_photo_avatar_status(generation_id)
 
 
 @router.get("/avatar/liveavatar/avatars")
@@ -142,11 +180,6 @@ async def check_heygen_video_status(
 # ── 视频任务 ────────────────────────────────────────────────
 
 
-class GenerateQuestionVideoRequest(BaseModel):
-    avatar_id: str | None = None
-    voice_id: str | None = None
-
-
 @router.post("/video-tasks/generate-question", response_model=VideoTaskResponse)
 async def generate_question_video(
     project_id: str,
@@ -170,6 +203,12 @@ async def generate_question_video(
         project_id, user.id, q_dicts,
         avatar_id=body.avatar_id if body else None,
         voice_id=body.voice_id if body else None,
+        avatar_type=body.avatar_type if body else None,
+        resolution=body.resolution if body else "720p",
+        aspect_ratio=body.aspect_ratio if body else "16:9",
+        expressiveness=body.expressiveness if body else "medium",
+        remove_background=body.remove_background if body else False,
+        voice_locale=body.voice_locale if body else "zh-CN",
     )
     return task
 

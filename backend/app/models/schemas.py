@@ -425,14 +425,55 @@ class VideoTaskResponse(BaseModel):
     status: str  # "pending" | "processing" | "completed" | "failed" | "outdated"
     persistent_url: str | None = None
     error_message: str | None = None
+    is_reused: bool = False
     created_at: datetime
     updated_at: datetime
 
 
-class GenerateQuestionVideoRequest(BaseModel):
-    """生成提问视频请求（使用项目已有问题，无需额外参数）"""
+class VideoGenerationOptions(BaseModel):
+    """视频生成选项"""
 
-    pass
+    avatar_id: str | None = None
+    voice_id: str | None = None
+    avatar_type: str | None = None  # "photo_avatar" | "digital_twin"
+    resolution: str = "720p"  # "1080p" | "720p"
+    aspect_ratio: str = "16:9"  # "16:9" | "9:16"
+    expressiveness: str = "medium"  # "low" | "medium" | "high" (仅 Photo Avatar)
+    remove_background: bool = False
+    voice_locale: str = "zh-CN"
+
+
+class PhotoAvatarCreateRequest(BaseModel):
+    """Photo Avatar 创建请求"""
+
+    name: str
+    age: str
+    gender: str
+    ethnicity: str
+    orientation: str
+    pose: str
+    style: str
+    appearance: str = Field(..., max_length=1000)
+
+
+class PhotoAvatarStatusResponse(BaseModel):
+    """Photo Avatar 创建状态响应"""
+
+    generation_id: str
+    status: str
+
+
+class GenerateQuestionVideoRequest(BaseModel):
+    """生成提问视频请求（含视频生成选项）"""
+
+    avatar_id: str | None = None
+    voice_id: str | None = None
+    avatar_type: str | None = None  # "photo_avatar" | "digital_twin"
+    resolution: str = "720p"
+    aspect_ratio: str = "16:9"
+    expressiveness: str = "medium"
+    remove_background: bool = False
+    voice_locale: str = "zh-CN"
 
 
 class GenerateFeedbackVideoRequest(BaseModel):

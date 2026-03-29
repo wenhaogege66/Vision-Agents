@@ -312,6 +312,39 @@ export interface VideoTask {
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'outdated';
   persistent_url: string | null;
   error_message: string | null;
+  is_reused?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// ── HeyGen 模式优化相关 ──────────────────────────────────────
+
+export interface AvatarInfo {
+  id: string;
+  name: string;
+  preview_image_url: string;
+  avatar_type: 'photo_avatar' | 'digital_twin';
+  is_custom: boolean;
+}
+
+export interface VideoGenerationOptions {
+  avatar_id?: string;
+  voice_id?: string;
+  avatar_type?: 'photo_avatar' | 'digital_twin';
+  resolution?: '1080p' | '720p';
+  aspect_ratio?: '16:9' | '9:16';
+  expressiveness?: 'low' | 'medium' | 'high';
+  remove_background?: boolean;
+  voice_locale?: string;
+}
+
+export interface PhotoAvatarCreateParams {
+  name: string;
+  age: string;
+  gender: string;
+  ethnicity: string;
+  orientation: string;
+  pose: string;
+  style: string;
+  appearance: string;
 }
