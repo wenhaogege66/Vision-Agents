@@ -221,5 +221,20 @@ async def _scan_and_fill_missing():
 
 @app.on_event("startup")
 async def startup_scan():
-    """应用启动时异步执行扫描任务。"""
+    """应用启动时异步执行扫描任务和视频任务轮询器。"""
     asyncio.create_task(_scan_and_fill_missing())
+
+    # 启动视频任务后台轮询器
+    from app.models.database import get_supabase as _get_sb
+    from app.services.video_task_poller import VideoTaskPoller
+    poller = VideoTaskPoller(_get_sb())
+    app.state.video_task_poller = poller
+    poller.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_poller():
+    """关闭视频任务轮询器。"""
+    poller = getattr(app.state, "video_task_poller", None)
+    if poller:
+        poller.stop()

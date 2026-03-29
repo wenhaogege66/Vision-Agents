@@ -300,4 +300,18 @@ export interface DefenseRecord {
   answer_duration: number;
   status: 'completed' | 'failed';
   created_at: string;
+  feedback_type?: 'text' | 'video';
+  question_video_task_id?: string | null;
+  feedback_video_task_id?: string | null;
+}
+
+export interface VideoTask {
+  id: string;
+  project_id: string;
+  video_type: 'question' | 'feedback';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'outdated';
+  persistent_url: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }

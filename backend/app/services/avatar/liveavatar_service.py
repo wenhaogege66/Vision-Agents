@@ -26,7 +26,7 @@ class LiveAvatarStreamService(StreamingAvatarProvider):
         if not api_key:
             raise HTTPException(status_code=503, detail="LiveAvatar API Key 未配置")
 
-        aid = avatar_id or settings.liveavatar_avatar_id or settings.heygen_avatar_id
+        aid = avatar_id or settings.liveavatar_avatar_id
         payload = {
             "mode": "FULL",
             "avatar_id": aid,
@@ -71,3 +71,20 @@ class LiveAvatarStreamService(StreamingAvatarProvider):
             session_id=session_id,
             provider="liveavatar",
         )
+
+    async def list_avatars(self) -> list[dict]:
+        """返回当前配置的 LiveAvatar 数字人。
+
+        LiveAvatar 没有公开的 avatar 列表 API，
+        只返回当前 .env 中配置的 avatar 作为选项。
+        """
+        aid = settings.liveavatar_avatar_id
+        if not aid:
+            return []
+        return [
+            {
+                "id": aid,
+                "name": "默认数字人",
+                "preview_image_url": "",
+            }
+        ]

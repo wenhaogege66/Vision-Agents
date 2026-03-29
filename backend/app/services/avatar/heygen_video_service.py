@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 HEYGEN_VIDEO_GENERATE_URL = "https://api.heygen.com/v2/video/generate"
 HEYGEN_VIDEO_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
+HEYGEN_VOICES_URL = "https://api.heygen.com/v2/voices"
+HEYGEN_TALKING_PHOTOS_URL = "https://api.heygen.com/v1/talking_photo.list"
+HEYGEN_AVATARS_URL = "https://api.heygen.com/v2/avatars"
 
 
 class HeyGenVideoService(VideoAvatarProvider):
@@ -27,14 +30,14 @@ class HeyGenVideoService(VideoAvatarProvider):
     def provider_name(self) -> str:
         return "heygen"
 
-    async def generate_video(self, text: str, avatar_id: str | None = None) -> AvatarVideoResult:
+    async def generate_video(self, text: str, avatar_id: str | None = None, voice_id: str | None = None) -> AvatarVideoResult:
         """调用 HeyGen v2/video/generate 生成数字人视频。"""
         if not settings.heygen_api_key:
             raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
 
         # 使用 Video API 专用的 avatar_id 和 voice_id
         aid = avatar_id or settings.heygen_video_avatar_id
-        vid = settings.heygen_video_voice_id
+        vid = voice_id or settings.heygen_video_voice_id
 
         # 判断 character type：如果 ID 是 hex 格式（32位）则为 talking_photo，否则为 avatar
         is_talking_photo = len(aid) == 32 and all(c in '0123456789abcdef' for c in aid)
@@ -43,6 +46,7 @@ class HeyGenVideoService(VideoAvatarProvider):
             character = {
                 "type": "talking_photo",
                 "talking_photo_id": aid,
+                "talking_style": settings.heygen_video_talking_style,
             }
         else:
             character = {
@@ -63,6 +67,7 @@ class HeyGenVideoService(VideoAvatarProvider):
                 }
             ],
             "dimension": {"width": 720, "height": 480},
+            "caption": settings.heygen_video_caption,
         }
 
         logger.info("HeyGen video generate: avatar_id=%s, voice_id=%s, text_len=%d", aid, vid, len(text))
@@ -129,3 +134,98 @@ class HeyGenVideoService(VideoAvatarProvider):
             video_url=video_url,
             provider="heygen",
         )
+
+    async def list_voices(self) -> list[dict]:
+        """列出所有可用的 HeyGen 语音。"""
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    HEYGEN_VOICES_URL,
+                    headers={"X-Api-Key": settings.heygen_api_key, "Accept": "application/json"},
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            logger.error("HeyGen list voices failed: %s", e)
+            raise HTTPException(status_code=502, detail="获取语音列表失败") from e
+        body = resp.json()
+        data = body.get("data", {})
+        voices = data.get("voices", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+        return [
+            {
+                "voice_id": v.get("voice_id", ""),
+                "name": v.get("name") or v.get("display_name", ""),
+                "language": v.get("language", ""),
+                "gender": v.get("gender", ""),
+                "preview_audio": v.get("preview_audio", ""),
+                "is_custom": v.get("is_custom", False),
+            }
+            for v in voices
+            if isinstance(v, dict)
+        ]
+
+    async def list_talking_photos(self) -> list[dict]:
+        """列出所有可用的 HeyGen Talking Photos。"""
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    HEYGEN_TALKING_PHOTOS_URL,
+                    headers={"X-Api-Key": settings.heygen_api_key, "Accept": "application/json"},
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            logger.error("HeyGen list talking photos failed: %s", e)
+            raise HTTPException(status_code=502, detail="获取 Talking Photos 列表失败") from e
+        body = resp.json()
+        # v1 API: data 可能直接是 list，也可能是 {"talking_photos": [...]}
+        data = body.get("data", [])
+        if isinstance(data, dict):
+            photos = data.get("talking_photos", [])
+        elif isinstance(data, list):
+            photos = data
+        else:
+            photos = []
+        return [
+            {
+                "id": p.get("talking_photo_id", ""),
+                "name": p.get("talking_photo_name", ""),
+                "preview_image_url": p.get("preview_image_url") or p.get("image_url", ""),
+                "type": "talking_photo",
+            }
+            for p in photos
+            if isinstance(p, dict)
+        ]
+
+    async def list_avatars(self) -> list[dict]:
+        """列出所有可用的 HeyGen Avatars。"""
+        if not settings.heygen_api_key:
+            raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    HEYGEN_AVATARS_URL,
+                    headers={"X-Api-Key": settings.heygen_api_key, "Accept": "application/json"},
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            logger.error("HeyGen list avatars failed: %s", e)
+            raise HTTPException(status_code=502, detail="获取 Avatar 列表失败") from e
+        body = resp.json()
+        data = body.get("data", {})
+        avatars = data.get("avatars", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+        return [
+            {
+                "id": a.get("avatar_id", ""),
+                "name": a.get("avatar_name", ""),
+                "preview_image_url": a.get("preview_image_url", ""),
+                "type": "avatar",
+            }
+            for a in avatars
+            if isinstance(a, dict)
+        ]

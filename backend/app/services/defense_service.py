@@ -9,28 +9,15 @@ from fastapi import HTTPException
 from supabase import Client
 
 from app.services.material_service import MaterialService
+from app.services.prompt_service import prompt_service
 from app.services.stt_service import STTService
+from app.services.video_task_service import VideoTaskService
 from app.utils.ai_utils import call_ai_api
 
 logger = logging.getLogger(__name__)
 
 # 中文序数词映射
 ORDINALS = ["首先", "其次", "再者", "第四", "第五", "第六", "第七", "第八", "第九", "第十"]
-
-QUESTION_GEN_SYSTEM_PROMPT = (
-    "你是一位专业的创业大赛评委。请根据以下项目简介，生成3个评委提问。\n"
-    "要求：\n"
-    "1. 每个问题不超过40个中文字符\n"
-    "2. 问题应针对项目的核心价值、商业模式、技术可行性等方面\n"
-    "3. 问题应该以评委的口吻提出，参考格式如：'关于你们的…'、'你们提到了…'\n"
-    "4. 问题要具体，结合项目实际内容，不要泛泛而谈\n"
-    '请以 JSON 数组格式返回，如：["问题1", "问题2", "问题3"]'
-)
-
-FEEDBACK_SYSTEM_PROMPT = (
-    "你是一位专业的创业大赛评委。请根据以下项目信息和选手的回答，给出简短的评价反馈。\n"
-    "反馈要求：20-60个中文字符，语言简洁有力，直击要点。请直接输出反馈文本，不要包含其他内容。"
-)
 
 
 def clamp_duration(d: int) -> int:
@@ -45,6 +32,8 @@ def clamp_duration(d: int) -> int:
 def format_questions_speech(project_name: str, questions: list[dict]) -> str:
     """将问题列表组合为自然语言提问文本。
 
+    通过 prompt_service 加载 ``question_speech`` 模板，并替换占位符。
+
     Args:
         project_name: 项目名称
         questions: 问题列表，每个元素包含 "content" 字段
@@ -52,17 +41,18 @@ def format_questions_speech(project_name: str, questions: list[dict]) -> str:
     Returns:
         组合后的自然语言提问文本
     """
-    count = len(questions)
     parts: list[str] = []
     for i, q in enumerate(questions):
         ordinal = ORDINALS[i] if i < len(ORDINALS) else f"第{i + 1}"
         parts.append(f"{ordinal}，{q['content']}")
 
     questions_text = "；".join(parts)
-    return (
-        f"你好，我是数字人评委，对于你们的{project_name}项目，"
-        f"我有以下{count}个问题：{questions_text}"
-    )
+
+    speech_template = prompt_service.load_defense_template("question_speech")
+    speech = speech_template.replace("{{project_name}}", project_name)
+    speech = speech.replace("{{question_count}}", str(len(questions)))
+    speech = speech.replace("{{questions_text}}", questions_text)
+    return speech
 
 
 class DefenseService:
@@ -122,9 +112,11 @@ class DefenseService:
             logger.exception("创建问题失败")
             raise HTTPException(status_code=500, detail=f"创建问题失败: {exc}") from exc
 
+        await VideoTaskService(self._sb).mark_outdated(project_id)
+
         return result.data[0]
 
-    async def update_question(self, question_id: str, content: str) -> dict:
+    async def update_question(self, question_id: str, content: str, project_id: str | None = None) -> dict:
         """更新问题内容。"""
         now = datetime.now(timezone.utc).isoformat()
         try:
@@ -140,15 +132,39 @@ class DefenseService:
 
         if not result.data:
             raise HTTPException(status_code=404, detail="问题不存在")
+
+        if project_id is None:
+            project_id = result.data[0].get("project_id")
+        if project_id:
+            await VideoTaskService(self._sb).mark_outdated(project_id)
+
         return result.data[0]
 
-    async def delete_question(self, question_id: str) -> None:
+    async def delete_question(self, question_id: str, project_id: str | None = None) -> None:
         """删除问题。"""
+        # If project_id not provided, look it up before deleting
+        if project_id is None:
+            try:
+                row = (
+                    self._sb.table("defense_questions")
+                    .select("project_id")
+                    .eq("id", question_id)
+                    .limit(1)
+                    .execute()
+                )
+                if row.data:
+                    project_id = row.data[0].get("project_id")
+            except Exception:
+                logger.warning("查询问题 project_id 失败", exc_info=True)
+
         try:
             self._sb.table("defense_questions").delete().eq("id", question_id).execute()
         except Exception as exc:
             logger.exception("删除问题失败")
             raise HTTPException(status_code=500, detail=f"删除问题失败: {exc}") from exc
+
+        if project_id:
+            await VideoTaskService(self._sb).mark_outdated(project_id)
 
     # ── AI 问题自动生成 ───────────────────────────────────────
 
@@ -172,7 +188,7 @@ class DefenseService:
         )
 
         messages = [
-            {"role": "system", "content": QUESTION_GEN_SYSTEM_PROMPT},
+            {"role": "system", "content": prompt_service.load_defense_template("question_gen")},
             {"role": "user", "content": user_content},
         ]
 
@@ -256,6 +272,9 @@ class DefenseService:
         user_id: str,
         audio_content: bytes,
         answer_duration: int,
+        feedback_type: str = "text",
+        question_video_task_id: str | None = None,
+        feedback_video_task_id: str | None = None,
     ) -> dict:
         """提交用户回答音频，执行 STT 转写和 AI 反馈生成。
 
@@ -264,6 +283,9 @@ class DefenseService:
             user_id: 用户 ID
             audio_content: 音频文件字节内容
             answer_duration: 回答时长（秒）
+            feedback_type: 反馈类型，"text" 或 "video"
+            question_video_task_id: 关联的提问视频任务 ID
+            feedback_video_task_id: 关联的反馈视频任务 ID
 
         Returns:
             创建的 defense_record 字典
@@ -291,6 +313,9 @@ class DefenseService:
                 ai_feedback_text=None,
                 answer_duration=answer_duration,
                 status="failed",
+                feedback_type=feedback_type,
+                question_video_task_id=question_video_task_id,
+                feedback_video_task_id=feedback_video_task_id,
             )
             raise HTTPException(status_code=502, detail="语音识别失败，请重试") from exc
 
@@ -311,7 +336,7 @@ class DefenseService:
         )
 
         messages = [
-            {"role": "system", "content": FEEDBACK_SYSTEM_PROMPT},
+            {"role": "system", "content": prompt_service.load_defense_template("feedback_gen")},
             {"role": "user", "content": feedback_user_content},
         ]
 
@@ -334,6 +359,9 @@ class DefenseService:
             ai_feedback_text=ai_feedback_text,
             answer_duration=answer_duration,
             status=status,
+            feedback_type=feedback_type,
+            question_video_task_id=question_video_task_id,
+            feedback_video_task_id=feedback_video_task_id,
         )
 
         return record
@@ -347,20 +375,30 @@ class DefenseService:
         ai_feedback_text: str | None,
         answer_duration: int,
         status: str,
+        feedback_type: str = "text",
+        question_video_task_id: str | None = None,
+        feedback_video_task_id: str | None = None,
     ) -> dict:
         """插入 defense_record 记录。"""
+        row: dict = {
+            "project_id": project_id,
+            "user_id": user_id,
+            "questions_snapshot": questions_snapshot,
+            "user_answer_text": user_answer_text,
+            "ai_feedback_text": ai_feedback_text,
+            "answer_duration": answer_duration,
+            "status": status,
+            "feedback_type": feedback_type,
+        }
+        if question_video_task_id is not None:
+            row["question_video_task_id"] = question_video_task_id
+        if feedback_video_task_id is not None:
+            row["feedback_video_task_id"] = feedback_video_task_id
+
         try:
             result = (
                 self._sb.table("defense_records")
-                .insert({
-                    "project_id": project_id,
-                    "user_id": user_id,
-                    "questions_snapshot": questions_snapshot,
-                    "user_answer_text": user_answer_text,
-                    "ai_feedback_text": ai_feedback_text,
-                    "answer_duration": answer_duration,
-                    "status": status,
-                })
+                .insert(row)
                 .execute()
             )
         except Exception as exc:
@@ -385,6 +423,18 @@ class DefenseService:
             logger.exception("查询问辩记录失败")
             raise HTTPException(status_code=500, detail=f"查询问辩记录失败: {exc}") from exc
         return result.data
+
+
+    async def delete_record(self, record_id: str, project_id: str) -> None:
+        """删除指定的问辩记录。"""
+        try:
+            self._sb.table("defense_records").delete().eq(
+                "id", record_id
+            ).eq("project_id", project_id).execute()
+        except Exception as exc:
+            logger.exception("删除问辩记录失败")
+            raise HTTPException(status_code=500, detail=f"删除问辩记录失败: {exc}") from exc
+
 
     # ── 内部辅助方法 ──────────────────────────────────────────
 

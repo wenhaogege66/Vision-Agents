@@ -229,6 +229,56 @@ class PromptService:
 
         return "".join(parts)
 
+    # ── Defense prompt 默认值 ────────────────────────────────
+    _DEFENSE_DEFAULTS: dict[str, str] = {
+        "question_gen": (
+            "你是一位专业的创业大赛评委。请根据以下项目简介，生成3个评委提问。\n"
+            "要求：\n"
+            "1. 每个问题不超过40个中文字符\n"
+            "2. 问题应针对项目的核心价值、商业模式、技术可行性等方面\n"
+            "3. 问题应该以评委的口吻提出，参考格式如：'关于你们的…'、'你们提到了…'\n"
+            "4. 问题要具体，结合项目实际内容，不要泛泛而谈\n"
+            '请以 JSON 数组格式返回，如：["问题1", "问题2", "问题3"]'
+        ),
+        "feedback_gen": (
+            "你是一位专业的创业大赛评委。请根据以下项目信息和选手的回答，给出简短的评价反馈。\n"
+            "反馈要求：20-60个中文字符，语言简洁有力，直击要点。请直接输出反馈文本，不要包含其他内容。"
+        ),
+        "question_speech": (
+            "你好，我是数字人评委，对于你们的{{project_name}}项目，"
+            "我有以下{{question_count}}个问题：{{questions_text}}"
+        ),
+    }
+
+    def load_defense_template(self, name: str) -> str:
+        """加载 defense prompt 模板。
+
+        从 ``defense/{name}.md`` 文件读取内容（每次调用都重新读取，
+        无缓存，以便编辑后立即生效）。若文件不存在则回退到硬编码默认值。
+
+        Args:
+            name: 模板名称，如 ``question_gen`` / ``feedback_gen`` / ``question_speech``
+
+        Returns:
+            模板文本内容
+        """
+        template_path = self._templates_dir / "defense" / f"{name}.md"
+        if template_path.is_file():
+            return template_path.read_text(encoding="utf-8")
+
+        # 文件不存在，回退到默认值
+        default = self._DEFENSE_DEFAULTS.get(name)
+        if default is not None:
+            logger.warning(
+                "Defense prompt 模板文件不存在: %s，使用硬编码默认值", template_path
+            )
+            return default
+
+        logger.warning(
+            "Defense prompt 模板文件不存在且无默认值: %s", template_path
+        )
+        return ""
+
     def _extract_output_format(self, template_content: str) -> str:
         """从模板内容中提取输出格式部分。
 

@@ -23,13 +23,16 @@ class Settings(BaseSettings):
 
     # HeyGen 数字人配置
     heygen_api_key: str = ""
-    heygen_avatar_id: str = "80d4afa941c243beb0a1116c95ea48ee"
     heygen_video_avatar_id: str = "Abigail_expressive_2024112501"
     heygen_video_voice_id: str = "de6ad44022104ac0872392d1139e9364"
 
     # LiveAvatar 数字人配置
     liveavatar_api_key: str = ""
     liveavatar_avatar_id: str = ""
+
+    # HeyGen 视频生成配置
+    heygen_video_caption: bool = True
+    heygen_video_talking_style: str = "expressive"
 
     # 应用配置
     app_env: str = "development"

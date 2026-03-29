@@ -353,13 +353,14 @@ export const tagApi = {
 
 // ── 数字人问辩 ───────────────────────────────────────────────
 
-import type { DefenseQuestion, DefenseRecord } from '@/types';
+import type { DefenseQuestion, DefenseRecord, VideoTask } from '@/types';
 
 export const defenseApi = {
   // ── LiveAvatar 实时流式会话 ──
-  createLiveAvatarSession: (projectId: string) =>
+  createLiveAvatarSession: (projectId: string, avatarId?: string) =>
     api.post<{ provider: string; mode: string; session_token: string; session_id: string }>(
       `/projects/${projectId}/defense/avatar/liveavatar/session`,
+      avatarId ? { avatar_id: avatarId } : {},
     ).then(r => r.data),
 
   // ── HeyGen 视频生成 ──
@@ -387,10 +388,13 @@ export const defenseApi = {
   deleteQuestion: (projectId: string, questionId: string) =>
     api.delete(`/projects/${projectId}/defense/questions/${questionId}`),
 
-  submitAnswer: (projectId: string, audio: Blob, answerDuration: number) => {
+  submitAnswer: (projectId: string, audio: Blob, answerDuration: number, questionVideoTaskId?: string | null) => {
     const form = new FormData();
     form.append('audio', audio, 'answer.webm');
     form.append('answer_duration', String(answerDuration));
+    if (questionVideoTaskId) {
+      form.append('question_video_task_id', questionVideoTaskId);
+    }
     return api.post<DefenseRecord>(`/projects/${projectId}/defense/submit-answer`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120_000,
@@ -399,4 +403,44 @@ export const defenseApi = {
 
   listRecords: (projectId: string) =>
     api.get<DefenseRecord[]>(`/projects/${projectId}/defense/records`).then(r => r.data),
+
+  deleteRecord: (projectId: string, recordId: string) =>
+    api.delete(`/projects/${projectId}/defense/records/${recordId}`),
+
+  // ── 资源列表 ──
+  listHeygenVoices: (projectId: string) =>
+    api.get<Array<{ voice_id: string; name: string; language: string; gender: string; preview_audio: string; is_custom: boolean }>>(
+      `/projects/${projectId}/defense/avatar/heygen/voices`,
+    ).then(r => r.data),
+
+  listHeygenTalkingPhotos: (projectId: string) =>
+    api.get<Array<{ id: string; name: string; preview_image_url: string; type: string }>>(
+      `/projects/${projectId}/defense/avatar/heygen/talking-photos`,
+    ).then(r => r.data),
+
+  listHeygenAvatars: (projectId: string) =>
+    api.get<Array<{ id: string; name: string; preview_image_url: string; type: string }>>(
+      `/projects/${projectId}/defense/avatar/heygen/avatars`,
+    ).then(r => r.data),
+
+  listLiveAvatarAvatars: (projectId: string) =>
+    api.get<Array<{ id: string; name: string; preview_image_url: string }>>(
+      `/projects/${projectId}/defense/avatar/liveavatar/avatars`,
+    ).then(r => r.data),
+
+  // ── 视频任务 ──
+  generateQuestionVideo: (projectId: string, opts?: { avatar_id?: string; voice_id?: string }) =>
+    api.post<VideoTask>(`/projects/${projectId}/defense/video-tasks/generate-question`, opts || {}).then(r => r.data),
+
+  generateFeedbackVideo: (projectId: string, defenseRecordId: string, feedbackText: string) =>
+    api.post<VideoTask>(`/projects/${projectId}/defense/video-tasks/generate-feedback`, {
+      defense_record_id: defenseRecordId,
+      feedback_text: feedbackText,
+    }).then(r => r.data),
+
+  getVideoTask: (projectId: string, taskId: string) =>
+    api.get<VideoTask>(`/projects/${projectId}/defense/video-tasks/${taskId}`).then(r => r.data),
+
+  getLatestQuestionTask: (projectId: string) =>
+    api.get<VideoTask | null>(`/projects/${projectId}/defense/video-tasks/latest-question`).then(r => r.data),
 };

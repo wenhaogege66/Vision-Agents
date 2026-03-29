@@ -410,4 +410,33 @@ class DefenseRecordResponse(BaseModel):
     ai_feedback_text: str | None
     answer_duration: int
     status: str
+    feedback_type: str = "text"
+    question_video_task_id: str | None = None
+    feedback_video_task_id: str | None = None
     created_at: datetime
+
+
+class VideoTaskResponse(BaseModel):
+    """视频生成任务响应"""
+
+    id: str
+    project_id: str
+    video_type: str  # "question" | "feedback"
+    status: str  # "pending" | "processing" | "completed" | "failed" | "outdated"
+    persistent_url: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GenerateQuestionVideoRequest(BaseModel):
+    """生成提问视频请求（使用项目已有问题，无需额外参数）"""
+
+    pass
+
+
+class GenerateFeedbackVideoRequest(BaseModel):
+    """生成反馈视频请求"""
+
+    defense_record_id: str
+    feedback_text: str
