@@ -43,7 +43,7 @@ class VideoTaskService:
 
         # 计算 config_hash = md5(sorted_questions | avatar | voice | 所有视频选项)
         sorted_contents = sorted(q["content"] for q in questions)
-        effective_avatar = avatar_id or _settings.heygen_video_avatar_id
+        effective_avatar = avatar_id or _settings.heygen_video_avatar_group_id
         effective_voice = voice_id or _settings.heygen_video_voice_id
         hash_input = "|".join(sorted_contents)
         hash_input += f"||{effective_avatar}||{effective_voice}||{avatar_type}"
@@ -164,7 +164,7 @@ class VideoTaskService:
                     "status": "pending",
                     "questions_hash": questions_hash,
                     "config_hash": config_hash,
-                    "avatar_type": avatar_type,
+                    "avatar_type": avatar_type or None,
                     "video_options": json.dumps(video_options),
                 })
                 .execute()
@@ -228,7 +228,7 @@ class VideoTaskService:
                     "heygen_video_id": result.video_id,
                     "status": "pending",
                     "defense_record_id": defense_record_id,
-                    "avatar_type": avatar_type,
+                    "avatar_type": avatar_type or None,
                     "video_options": json.dumps(video_options),
                 })
                 .execute()

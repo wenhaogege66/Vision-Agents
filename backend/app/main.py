@@ -9,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.models.database import get_supabase
 from app.models.schemas import ErrorResponse
+from app.services.avatar.cache_sync_service import CacheSyncService
 from app.utils.timing_middleware import TimingMiddleware
 
 # 配置日志级别，确保 INFO 日志可见
@@ -219,10 +221,39 @@ async def _scan_and_fill_missing():
             continue
 
 
+# ── HeyGen 缓存同步后台任务 ─────────────────────────────────
+
+_periodic_sync_task: asyncio.Task | None = None
+
+
+async def _periodic_cache_sync():
+    """每 24 小时执行一次 HeyGen 缓存全量同步的后台循环。"""
+    while True:
+        await asyncio.sleep(86400)  # 24h
+        try:
+            sb = get_supabase()
+            svc = CacheSyncService(sb)
+            await svc.force_sync()
+        except Exception:
+            logger.exception("定时缓存同步失败")
+
+
 @app.on_event("startup")
 async def startup_scan():
-    """应用启动时异步执行扫描任务和视频任务轮询器。"""
+    """应用启动时异步执行扫描任务、缓存同步和视频任务轮询器。"""
+    global _periodic_sync_task
+
     asyncio.create_task(_scan_and_fill_missing())
+
+    # 启动 HeyGen 缓存同步：条件同步 + 24h 周期同步
+    try:
+        sb = get_supabase()
+        svc = CacheSyncService(sb)
+        asyncio.create_task(svc.maybe_sync())
+        _periodic_sync_task = asyncio.create_task(_periodic_cache_sync())
+        logger.info("HeyGen 缓存同步任务已启动（条件同步 + 24h 周期同步）")
+    except Exception:
+        logger.exception("启动 HeyGen 缓存同步任务失败")
 
     # 启动视频任务后台轮询器
     from app.models.database import get_supabase as _get_sb
@@ -234,7 +265,15 @@ async def startup_scan():
 
 @app.on_event("shutdown")
 async def shutdown_poller():
-    """关闭视频任务轮询器。"""
+    """关闭视频任务轮询器和缓存同步后台任务。"""
+    global _periodic_sync_task
+
+    # 取消 HeyGen 缓存周期同步任务
+    if _periodic_sync_task is not None:
+        _periodic_sync_task.cancel()
+        _periodic_sync_task = None
+        logger.info("HeyGen 缓存周期同步任务已取消")
+
     poller = getattr(app.state, "video_task_poller", None)
     if poller:
         poller.stop()

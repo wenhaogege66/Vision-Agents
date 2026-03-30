@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # HeyGen 数字人配置
     heygen_api_key: str = ""
-    heygen_video_avatar_id: str = "8d4aa85254354488a0f9bce7b4c3549e"
+    heygen_video_avatar_group_id: str = "8d4aa85254354488a0f9bce7b4c3549e"
     heygen_video_voice_id: str = "769716d5135541db93e95ce84508c59e"
 
     # LiveAvatar 数字人配置

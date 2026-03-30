@@ -33,6 +33,7 @@ import {
   DeleteOutlined,
   UserOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { LiveAvatarSession, SessionEvent, SessionState, AgentEventsEnum } from '@heygen/liveavatar-web-sdk';
 import BackButton from '@/components/BackButton';
@@ -42,7 +43,7 @@ import FeedbackTypeModal from '@/components/FeedbackTypeModal';
 import VideoTaskStatus from '@/components/VideoTaskStatus';
 import { defenseApi, projectApi } from '@/services/api';
 import { msg } from '@/utils/messageHolder';
-import type { DefenseRecord, VideoTask, DefenseQuestion, AvatarInfo, VideoGenerationOptions, PhotoAvatarCreateParams } from '@/types';
+import type { DefenseRecord, VideoTask, DefenseQuestion, PhotoAvatarCreateParams, AvatarCacheItem, VoiceCacheItem } from '@/types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -102,8 +103,8 @@ export default function DigitalDefense() {
   const [liveAvatarReady, setLiveAvatarReady] = useState(false);
 
   // ── Avatar/Voice customization state ──────────────────────
-  const [heygenVoices, setHeygenVoices] = useState<Array<{ voice_id: string; name: string; language: string; gender: string; preview_audio: string; is_custom: boolean }>>([]);
-  const [heygenCharacters, setHeygenCharacters] = useState<AvatarInfo[]>([]);
+  const [heygenVoices, setHeygenVoices] = useState<VoiceCacheItem[]>([]);
+  const [heygenCharacters, setHeygenCharacters] = useState<AvatarCacheItem[]>([]);
   const [liveAvatarList, setLiveAvatarList] = useState<Array<{ id: string; name: string; preview_image_url: string }>>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | undefined>(undefined);
@@ -114,9 +115,9 @@ export default function DigitalDefense() {
 
   // ── Video options state ───────────────────────────────────
   const [voiceLocale, setVoiceLocale] = useState('zh-CN');
-  const [resolution, setResolution] = useState('720p');
-  const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [expressiveness, setExpressiveness] = useState('medium');
+  const [resolution, setResolution] = useState<'1080p' | '720p'>('720p');
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
+  const [expressiveness, setExpressiveness] = useState<'low' | 'medium' | 'high'>('medium');
   const [removeBackground, setRemoveBackground] = useState(false);
 
   // ── Photo Avatar creation state ───────────────────────────
@@ -187,14 +188,14 @@ export default function DigitalDefense() {
     setLoadingResources(true);
     const loadHeygenResources = async () => {
       try {
-        const [voices, avatars, defaults] = await Promise.all([
-          defenseApi.listHeygenVoices(projectId),
-          defenseApi.listHeygenAvatars(projectId),
+        const [avatarResp, voiceResp, defaults] = await Promise.all([
+          defenseApi.listCachedAvatars(projectId, { page: 1, page_size: 200 }),
+          defenseApi.listCachedVoices(projectId, { page: 1, page_size: 200 }),
           defenseApi.getAvatarDefaults(projectId),
         ]);
-        setHeygenVoices(voices);
-        setHeygenCharacters(avatars);
-        setDefaultAvatarId(defaults.heygen_video_avatar_id || '');
+        setHeygenCharacters(avatarResp.items);
+        setHeygenVoices(voiceResp.items);
+        setDefaultAvatarId(defaults.heygen_video_avatar_group_id || '');
         setDefaultVoiceId(defaults.heygen_video_voice_id || '');
       } catch { /* silent */ }
     };
@@ -456,6 +457,9 @@ export default function DigitalDefense() {
     }
   }, [projectId, pendingRecordId, pendingFeedbackText, finishDefense, pollFeedbackVideo]);
 
+  // ── Derived: selected avatar type (needed by callbacks below) ──
+  const selectedAvatarType = heygenCharacters.find(c => c.id === selectedCharacterId)?.avatar_type;
+
   // ── Generate question video (pre-generate) ────────────────
   const handleGenerateQuestionVideo = useCallback(async () => {
     if (!projectId) return;
@@ -602,7 +606,6 @@ export default function DigitalDefense() {
   }, [projectId]);
 
   // ── Derived state ─────────────────────────────────────────
-  const selectedAvatarType = heygenCharacters.find(c => c.id === selectedCharacterId)?.avatar_type;
   const isHeygen = provider === 'heygen';
   const hasQuestions = questions.length > 0;
   const hasActiveTask = questionTask?.status === 'pending' || questionTask?.status === 'processing';
@@ -679,6 +682,8 @@ export default function DigitalDefense() {
                     optionLabelProp="label"
                     virtual
                     listHeight={300}
+                    popupMatchSelectWidth={false}
+                    popupStyle={{ minWidth: 320 }}
                   >
                     {(() => {
                       const myAvatars = heygenCharacters.filter(c => c.id && c.is_custom);
@@ -692,7 +697,7 @@ export default function DigitalDefense() {
                                 const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
                                 const typeLabel = c.avatar_type === 'photo_avatar' ? 'Photo Avatar' : 'Digital Twin';
                                 return (
-                                  <Select.Option key={c.id || `my-${idx}`} value={c.id} label={label}>
+                                  <Select.Option key={`my-${c.id || idx}`} value={c.id} label={label}>
                                     <Flex align="center" gap={8}>
                                       {c.preview_image_url ? (
                                         <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
@@ -702,7 +707,7 @@ export default function DigitalDefense() {
                                       <div>
                                         <div style={{ fontSize: 13 }}>{label}</div>
                                         <div style={{ fontSize: 11, color: '#999' }}>
-                                          <Tag color={c.avatar_type === 'photo_avatar' ? 'blue' : 'purple'} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 0 }}>{typeLabel}</Tag>
+                                          <Tag color={c.avatar_type === 'photo_avatar' ? 'blue' : 'green'} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 0 }}>{typeLabel}</Tag>
                                         </div>
                                       </div>
                                     </Flex>
@@ -717,7 +722,7 @@ export default function DigitalDefense() {
                                 const isDefault = c.id === defaultAvatarId;
                                 const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
                                 return (
-                                  <Select.Option key={c.id || `pub-${idx}`} value={c.id} label={label}>
+                                  <Select.Option key={`pub-${c.id || idx}`} value={c.id} label={label}>
                                     <Flex align="center" gap={8}>
                                       {c.preview_image_url ? (
                                         <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
@@ -740,6 +745,23 @@ export default function DigitalDefense() {
                   </Select>
                   <Button icon={<PlusOutlined />} onClick={() => setPhotoAvatarModalOpen(true)} disabled={phase !== 'idle'}>
                     创建
+                  </Button>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={async () => {
+                      if (!projectId) return;
+                      try {
+                        await defenseApi.triggerCacheSync(projectId);
+                        msg.success('缓存同步已启动，请稍后刷新');
+                      } catch (e: any) {
+                        if (e?.response?.status === 409) {
+                          msg.warning('同步正在进行中，请稍后');
+                        }
+                      }
+                    }}
+                    disabled={phase !== 'idle'}
+                  >
+                    刷新
                   </Button>
                 </Flex>
               </div>
@@ -1172,7 +1194,7 @@ export default function DigitalDefense() {
           body: { padding: 0, background: '#000', overflow: 'hidden', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
           content: { padding: 0, borderRadius: 0, background: '#000', maxWidth: '100vw', top: 0 },
           wrapper: { overflow: 'hidden' },
-        }}
+        } as Record<string, React.CSSProperties>}
         style={{ top: 0, padding: 0, maxWidth: '100vw' }}
         destroyOnHidden
       >

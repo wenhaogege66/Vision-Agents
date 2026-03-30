@@ -348,3 +348,47 @@ export interface PhotoAvatarCreateParams {
   style: string;
   appearance: string;
 }
+
+// ── HeyGen 缓存相关 ──────────────────────────────────────────
+
+export interface AvatarCacheItem {
+  id: string;
+  name: string;
+  preview_image_url: string;
+  avatar_type: 'photo_avatar' | 'digital_twin';
+  is_custom: boolean;
+  group_id?: string | null;
+}
+
+export interface VoiceCacheItem {
+  voice_id: string;
+  name: string;
+  language: string;
+  gender: string;
+  preview_audio: string;
+  is_custom: boolean;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CacheQueryParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  is_custom?: boolean;
+}
+
+export interface SyncStatusResponse {
+  avatar_last_sync_at: string | null;
+  avatar_last_sync_status: string;
+  avatar_count: number;
+  voice_last_sync_at: string | null;
+  voice_last_sync_status: string;
+  voice_count: number;
+}

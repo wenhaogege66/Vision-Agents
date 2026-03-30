@@ -481,3 +481,49 @@ class GenerateFeedbackVideoRequest(BaseModel):
 
     defense_record_id: str
     feedback_text: str
+
+
+# ── HeyGen 缓存相关 ──────────────────────────────────────────
+
+
+class AvatarCacheItem(BaseModel):
+    """缓存的 Avatar 数据项"""
+
+    id: str  # heygen_avatar_id
+    name: str
+    preview_image_url: str
+    avatar_type: str  # "photo_avatar" | "digital_twin"
+    is_custom: bool
+    group_id: str | None = None
+
+
+class VoiceCacheItem(BaseModel):
+    """缓存的 Voice 数据项"""
+
+    voice_id: str  # heygen_voice_id
+    name: str
+    language: str
+    gender: str
+    preview_audio: str
+    is_custom: bool
+
+
+class PaginatedResponse(BaseModel):
+    """分页响应"""
+
+    items: list
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class SyncStatusResponse(BaseModel):
+    """缓存同步状态响应"""
+
+    avatar_last_sync_at: datetime | None = None
+    avatar_last_sync_status: str = "never"
+    avatar_count: int = 0
+    voice_last_sync_at: datetime | None = None
+    voice_last_sync_status: str = "never"
+    voice_count: int = 0

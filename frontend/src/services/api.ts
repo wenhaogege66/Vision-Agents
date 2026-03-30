@@ -353,7 +353,7 @@ export const tagApi = {
 
 // ── 数字人问辩 ───────────────────────────────────────────────
 
-import type { DefenseQuestion, DefenseRecord, VideoTask, AvatarInfo, VideoGenerationOptions, PhotoAvatarCreateParams } from '@/types';
+import type { DefenseQuestion, DefenseRecord, VideoTask, AvatarInfo, VideoGenerationOptions, PhotoAvatarCreateParams, AvatarCacheItem, VoiceCacheItem, PaginatedResponse, CacheQueryParams, SyncStatusResponse } from '@/types';
 
 export const defenseApi = {
   // ── LiveAvatar 实时流式会话 ──
@@ -429,7 +429,7 @@ export const defenseApi = {
     ).then(r => r.data),
 
   getAvatarDefaults: (projectId: string) =>
-    api.get<{ heygen_video_avatar_id: string; heygen_video_voice_id: string }>(
+    api.get<{ heygen_video_avatar_group_id: string; heygen_video_voice_id: string }>(
       `/projects/${projectId}/defense/avatar/defaults`,
     ).then(r => r.data),
 
@@ -459,5 +459,39 @@ export const defenseApi = {
   checkPhotoAvatarStatus: (projectId: string, generationId: string) =>
     api.get<{ generation_id: string; status: string }>(
       `/projects/${projectId}/defense/avatar/heygen/photo-avatar/${generationId}`,
+    ).then(r => r.data),
+
+  // ── 缓存 API ──
+  listCachedAvatars: (projectId: string, params?: CacheQueryParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.is_custom !== undefined) searchParams.set('is_custom', String(params.is_custom));
+    const qs = searchParams.toString();
+    return api.get<PaginatedResponse<AvatarCacheItem>>(
+      `/projects/${projectId}/defense/avatar/cache/avatars${qs ? `?${qs}` : ''}`,
+    ).then(r => r.data);
+  },
+
+  listCachedVoices: (projectId: string, params?: CacheQueryParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+    if (params?.search) searchParams.set('search', params.search);
+    const qs = searchParams.toString();
+    return api.get<PaginatedResponse<VoiceCacheItem>>(
+      `/projects/${projectId}/defense/avatar/cache/voices${qs ? `?${qs}` : ''}`,
+    ).then(r => r.data);
+  },
+
+  triggerCacheSync: (projectId: string) =>
+    api.post<{ message: string }>(
+      `/projects/${projectId}/defense/avatar/cache/sync`,
+    ).then(r => r.data),
+
+  getCacheSyncStatus: (projectId: string) =>
+    api.get<SyncStatusResponse>(
+      `/projects/${projectId}/defense/avatar/cache/sync-status`,
     ).then(r => r.data),
 };

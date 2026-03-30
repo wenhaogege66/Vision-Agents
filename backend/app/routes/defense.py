@@ -1,11 +1,15 @@
 """数字人问辩路由：数字人服务（HeyGen/LiveAvatar）、视频任务、问题 CRUD、答案提交、记录查询。"""
 
+import asyncio
+import math
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from supabase import Client
 
 from app.models.database import get_supabase
 from app.models.schemas import (
+    AvatarCacheItem,
     DefenseQuestionCreate,
     DefenseQuestionResponse,
     DefenseRecordResponse,
@@ -13,10 +17,12 @@ from app.models.schemas import (
     GenerateQuestionVideoRequest,
     PhotoAvatarCreateRequest,
     UserInfo,
+    VoiceCacheItem,
     VideoTaskResponse,
 )
 from app.routes.auth import get_current_user
 from app.services.avatar import HeyGenVideoService, LiveAvatarStreamService
+from app.services.avatar.cache_sync_service import CacheSyncService
 from app.services.defense_service import DefenseService
 from app.services.video_task_service import VideoTaskService
 
@@ -47,7 +53,7 @@ async def get_avatar_defaults(
     """返回默认的数字人形象和音色 ID。"""
     from app.config import settings as _s
     return {
-        "heygen_video_avatar_id": _s.heygen_video_avatar_id,
+        "heygen_video_avatar_group_id": _s.heygen_video_avatar_group_id,
         "heygen_video_voice_id": _s.heygen_video_voice_id,
     }
 
@@ -113,6 +119,133 @@ async def list_liveavatar_avatars(
     """列出 LiveAvatar 可用数字人。"""
     svc = LiveAvatarStreamService()
     return await svc.list_avatars()
+
+
+# ── 缓存查询 API ─────────────────────────────────────────────
+
+
+@router.get("/avatar/cache/avatars")
+async def list_cached_avatars(
+    project_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    is_custom: bool | None = None,
+    user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase),
+):
+    """分页查询 avatar 缓存。"""
+    # Build count query
+    count_query = supabase.table("heygen_avatar_cache").select("*", count="exact")
+    if search:
+        count_query = count_query.ilike("name", f"%{search}%")
+    if is_custom is not None:
+        count_query = count_query.eq("is_custom", is_custom)
+    count_resp = count_query.limit(0).execute()
+    total = count_resp.count or 0
+
+    # Build data query with pagination
+    offset = (page - 1) * page_size
+    data_query = supabase.table("heygen_avatar_cache").select("*")
+    if search:
+        data_query = data_query.ilike("name", f"%{search}%")
+    if is_custom is not None:
+        data_query = data_query.eq("is_custom", is_custom)
+    data_resp = data_query.range(offset, offset + page_size - 1).execute()
+    rows = data_resp.data or []
+
+    items = [
+        AvatarCacheItem(
+            id=row["heygen_avatar_id"],
+            name=row.get("name", ""),
+            preview_image_url=row.get("preview_image_url", ""),
+            avatar_type=row.get("avatar_type", "photo_avatar"),
+            is_custom=row.get("is_custom", False),
+            group_id=row.get("group_id"),
+        )
+        for row in rows
+    ]
+
+    total_pages = math.ceil(total / page_size) if page_size > 0 else 0
+    return {
+        "items": [item.model_dump() for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
+
+@router.get("/avatar/cache/voices")
+async def list_cached_voices(
+    project_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase),
+):
+    """分页查询 voice 缓存。"""
+    # Build count query
+    count_query = supabase.table("heygen_voice_cache").select("*", count="exact")
+    if search:
+        count_query = count_query.ilike("name", f"%{search}%")
+    count_resp = count_query.limit(0).execute()
+    total = count_resp.count or 0
+
+    # Build data query with pagination
+    offset = (page - 1) * page_size
+    data_query = supabase.table("heygen_voice_cache").select("*")
+    if search:
+        data_query = data_query.ilike("name", f"%{search}%")
+    data_resp = data_query.range(offset, offset + page_size - 1).execute()
+    rows = data_resp.data or []
+
+    items = [
+        VoiceCacheItem(
+            voice_id=row["heygen_voice_id"],
+            name=row.get("name", ""),
+            language=row.get("language", ""),
+            gender=row.get("gender", ""),
+            preview_audio=row.get("preview_audio", ""),
+            is_custom=row.get("is_custom", False),
+        )
+        for row in rows
+    ]
+
+    total_pages = math.ceil(total / page_size) if page_size > 0 else 0
+    return {
+        "items": [item.model_dump() for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
+
+@router.post("/avatar/cache/sync", status_code=202)
+async def trigger_cache_sync(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase),
+):
+    """手动触发缓存同步。"""
+    svc = CacheSyncService(supabase)
+    if svc.is_syncing():
+        raise HTTPException(status_code=409, detail="同步正在进行中")
+    asyncio.create_task(svc.force_sync())
+    return {"message": "同步任务已启动"}
+
+
+@router.get("/avatar/cache/sync-status")
+async def get_cache_sync_status(
+    project_id: str,
+    user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase),
+):
+    """查询缓存同步状态。"""
+    svc = CacheSyncService(supabase)
+    return await svc.get_sync_status()
 
 
 # ── 数字人服务 ────────────────────────────────────────────────
