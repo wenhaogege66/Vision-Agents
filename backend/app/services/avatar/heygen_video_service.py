@@ -53,23 +53,18 @@ class HeyGenVideoService(VideoAvatarProvider):
 
         Photo Avatar: 附加 motion_prompt + expressiveness
         Digital Twin: 省略 motion_prompt + expressiveness
-        始终开启 caption: true
         """
         if not settings.heygen_api_key:
             raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
 
-        aid = avatar_id or settings.heygen_video_avatar_group_id
+        aid = avatar_id or settings.heygen_video_avatar_id
         vid = voice_id or settings.heygen_video_voice_id
 
         payload: dict = {
             "avatar_id": aid,
-            "script": {
-                "type": "text",
-                "input": text,
-                "voice_id": vid,
-                "voice_settings": {"locale": voice_locale},
-            },
-            "caption": True,
+            "script": text,
+            "voice_id": vid,
+            "voice_settings": {"locale": voice_locale},
             "resolution": resolution,
             "aspect_ratio": aspect_ratio,
             "remove_background": remove_background,
@@ -261,7 +256,6 @@ class HeyGenVideoService(VideoAvatarProvider):
         payload: dict = {
             "video_inputs": video_inputs,
             "dimension": dimension,
-            "caption": True,
         }
 
         logger.info(

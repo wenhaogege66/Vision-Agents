@@ -195,7 +195,7 @@ export default function DigitalDefense() {
         ]);
         setHeygenCharacters(avatarResp.items);
         setHeygenVoices(voiceResp.items);
-        setDefaultAvatarId(defaults.heygen_video_avatar_group_id || '');
+        setDefaultAvatarId(defaults.heygen_video_avatar_id || '');
         setDefaultVoiceId(defaults.heygen_video_voice_id || '');
       } catch { /* silent */ }
     };

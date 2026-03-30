@@ -53,7 +53,7 @@ async def get_avatar_defaults(
     """返回默认的数字人形象和音色 ID。"""
     from app.config import settings as _s
     return {
-        "heygen_video_avatar_group_id": _s.heygen_video_avatar_group_id,
+        "heygen_video_avatar_id": _s.heygen_video_avatar_id,
         "heygen_video_voice_id": _s.heygen_video_voice_id,
     }
 

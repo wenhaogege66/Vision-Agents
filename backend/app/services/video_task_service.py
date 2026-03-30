@@ -7,7 +7,6 @@ import logging
 from fastapi import HTTPException
 from supabase import Client
 
-from app.services.avatar.background_generator import BackgroundImageGenerator
 from app.services.avatar.heygen_video_service import HeyGenVideoService
 from app.services.prompt_service import prompt_service
 
@@ -43,7 +42,7 @@ class VideoTaskService:
 
         # 计算 config_hash = md5(sorted_questions | avatar | voice | 所有视频选项)
         sorted_contents = sorted(q["content"] for q in questions)
-        effective_avatar = avatar_id or _settings.heygen_video_avatar_group_id
+        effective_avatar = avatar_id or _settings.heygen_video_avatar_id
         effective_voice = voice_id or _settings.heygen_video_voice_id
         hash_input = "|".join(sorted_contents)
         hash_input += f"||{effective_avatar}||{effective_voice}||{avatar_type}"
@@ -89,54 +88,16 @@ class VideoTaskService:
         speech_text = speech_text.replace("{{question_count}}", str(len(questions)))
         speech_text = speech_text.replace("{{questions_text}}", questions_text)
 
-        scenes: list[dict] = [
-            {"text": speech_text, "background_asset_id": None},
-        ]
-
-        # Scene 1..N: 每个问题独立场景（带背景图）
-        # 根据分辨率确定背景图尺寸
-        dimension_map = {
-            "1080p": (1920, 1080),
-            "720p": (1280, 720),
-        }
-        img_w, img_h = dimension_map.get(resolution, (1280, 720))
-        if aspect_ratio == "9:16":
-            img_w, img_h = img_h, img_w
-
-        bg_generator = BackgroundImageGenerator()
-
-        for i, q in enumerate(questions):
-            ordinal = ORDINALS[i] if i < len(ORDINALS) else f"第{i + 1}"
-            scene_text = f"{ordinal}，{q['content']}"
-
-            # 生成背景图并上传
-            bg_asset_id: str | None = None
-            try:
-                img_bytes = bg_generator.generate(
-                    question_number=i + 1,
-                    question_text=q["content"],
-                    width=img_w,
-                    height=img_h,
-                )
-                bg_asset_id = await self._heygen.upload_asset(
-                    img_bytes, filename=f"q{i + 1}_bg.png"
-                )
-            except Exception:
-                logger.warning(
-                    "问题 %d 背景图生成/上传失败，回退到纯色背景", i + 1, exc_info=True,
-                )
-
-            scenes.append({"text": scene_text, "background_asset_id": bg_asset_id})
-
-        # 调用多场景视频生成
-        gen_result = await self._heygen.generate_multi_scene_video(
-            scenes=scenes,
+        # 单场景视频：数字人口头提问，字幕自动开启（caption=True）
+        gen_result = await self._heygen.generate_video(
+            speech_text,
             avatar_id=effective_avatar,
             voice_id=effective_voice,
             avatar_type=avatar_type or "",
             resolution=resolution,
             aspect_ratio=aspect_ratio,
             expressiveness=expressiveness,
+            remove_background=remove_background,
             voice_locale=voice_locale,
         )
 

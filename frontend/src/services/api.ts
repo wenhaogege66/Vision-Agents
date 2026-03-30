@@ -429,7 +429,7 @@ export const defenseApi = {
     ).then(r => r.data),
 
   getAvatarDefaults: (projectId: string) =>
-    api.get<{ heygen_video_avatar_group_id: string; heygen_video_voice_id: string }>(
+    api.get<{ heygen_video_avatar_id: string; heygen_video_voice_id: string }>(
       `/projects/${projectId}/defense/avatar/defaults`,
     ).then(r => r.data),
 
