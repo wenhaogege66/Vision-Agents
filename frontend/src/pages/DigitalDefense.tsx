@@ -43,7 +43,7 @@ import FeedbackTypeModal from '@/components/FeedbackTypeModal';
 import VideoTaskStatus from '@/components/VideoTaskStatus';
 import { defenseApi, projectApi } from '@/services/api';
 import { msg } from '@/utils/messageHolder';
-import type { DefenseRecord, VideoTask, DefenseQuestion, PhotoAvatarCreateParams, AvatarCacheItem, VoiceCacheItem } from '@/types';
+import type { DefenseRecord, VideoTask, DefenseQuestion, PhotoAvatarCreateParams, AvatarInfo, VoiceInfo } from '@/types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -103,8 +103,9 @@ export default function DigitalDefense() {
   const [liveAvatarReady, setLiveAvatarReady] = useState(false);
 
   // ── Avatar/Voice customization state ──────────────────────
-  const [heygenVoices, setHeygenVoices] = useState<VoiceCacheItem[]>([]);
-  const [heygenCharacters, setHeygenCharacters] = useState<AvatarCacheItem[]>([]);
+  const voicePreviewRef = useRef<HTMLAudioElement | null>(null);
+  const [heygenVoices, setHeygenVoices] = useState<VoiceInfo[]>([]);
+  const [heygenCharacters, setHeygenCharacters] = useState<AvatarInfo[]>([]);
   const [liveAvatarList, setLiveAvatarList] = useState<Array<{ id: string; name: string; preview_image_url: string }>>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | undefined>(undefined);
@@ -188,13 +189,13 @@ export default function DigitalDefense() {
     setLoadingResources(true);
     const loadHeygenResources = async () => {
       try {
-        const [avatarResp, voiceResp, defaults] = await Promise.all([
-          defenseApi.listCachedAvatars(projectId, { page: 1, page_size: 200 }),
-          defenseApi.listCachedVoices(projectId, { page: 1, page_size: 200 }),
+        const [avatars, voices, defaults] = await Promise.all([
+          defenseApi.listHeygenAvatars(projectId),
+          defenseApi.listHeygenVoices(projectId),
           defenseApi.getAvatarDefaults(projectId),
         ]);
-        setHeygenCharacters(avatarResp.items);
-        setHeygenVoices(voiceResp.items);
+        setHeygenCharacters(avatars);
+        setHeygenVoices(voices);
         setDefaultAvatarId(defaults.heygen_video_avatar_id || '');
         setDefaultVoiceId(defaults.heygen_video_voice_id || '');
       } catch { /* silent */ }
@@ -686,57 +687,41 @@ export default function DigitalDefense() {
                     popupStyle={{ minWidth: 320 }}
                   >
                     {(() => {
-                      const myAvatars = heygenCharacters.filter(c => c.id && c.is_custom);
-                      const publicAvatars = heygenCharacters.filter(c => c.id && !c.is_custom);
+                      const photoAvatars = heygenCharacters.filter(c => c.id && c.avatar_type === 'photo_avatar');
+                      const digitalTwins = heygenCharacters.filter(c => c.id && c.avatar_type === 'digital_twin');
+                      const renderOption = (c: AvatarInfo, idx: number, prefix: string) => {
+                        const isDefault = c.id === defaultAvatarId;
+                        const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
+                        const typeLabel = c.avatar_type === 'photo_avatar' ? 'Photo Avatar' : 'Digital Twin';
+                        return (
+                          <Select.Option key={`${prefix}-${c.id || idx}`} value={c.id} label={label}>
+                            <Flex align="center" gap={8}>
+                              {c.preview_image_url ? (
+                                <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
+                              ) : (
+                                <UserOutlined style={{ fontSize: 20, color: '#999' }} />
+                              )}
+                              <div>
+                                <div style={{ fontSize: 13 }}>{label}</div>
+                                <div style={{ fontSize: 11, color: '#999' }}>
+                                  <Tag color={c.avatar_type === 'photo_avatar' ? 'blue' : 'green'} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 0 }}>{typeLabel}</Tag>
+                                  {c.group_name && <span style={{ marginLeft: 4 }}>{c.group_name}</span>}
+                                </div>
+                              </div>
+                            </Flex>
+                          </Select.Option>
+                        );
+                      };
                       return (
                         <>
-                          {myAvatars.length > 0 && (
-                            <Select.OptGroup label="我的">
-                              {myAvatars.map((c, idx) => {
-                                const isDefault = c.id === defaultAvatarId;
-                                const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
-                                const typeLabel = c.avatar_type === 'photo_avatar' ? 'Photo Avatar' : 'Digital Twin';
-                                return (
-                                  <Select.Option key={`my-${c.id || idx}`} value={c.id} label={label}>
-                                    <Flex align="center" gap={8}>
-                                      {c.preview_image_url ? (
-                                        <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
-                                      ) : (
-                                        <UserOutlined style={{ fontSize: 20, color: '#999' }} />
-                                      )}
-                                      <div>
-                                        <div style={{ fontSize: 13 }}>{label}</div>
-                                        <div style={{ fontSize: 11, color: '#999' }}>
-                                          <Tag color={c.avatar_type === 'photo_avatar' ? 'blue' : 'green'} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 0 }}>{typeLabel}</Tag>
-                                        </div>
-                                      </div>
-                                    </Flex>
-                                  </Select.Option>
-                                );
-                              })}
+                          {photoAvatars.length > 0 && (
+                            <Select.OptGroup label="Photo Avatar">
+                              {photoAvatars.map((c, idx) => renderOption(c, idx, 'photo'))}
                             </Select.OptGroup>
                           )}
-                          {publicAvatars.length > 0 && (
-                            <Select.OptGroup label="公共">
-                              {publicAvatars.map((c, idx) => {
-                                const isDefault = c.id === defaultAvatarId;
-                                const label = (c.name || c.id) + (isDefault ? '（默认）' : '');
-                                return (
-                                  <Select.Option key={`pub-${c.id || idx}`} value={c.id} label={label}>
-                                    <Flex align="center" gap={8}>
-                                      {c.preview_image_url ? (
-                                        <img src={c.preview_image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} loading="lazy" />
-                                      ) : (
-                                        <UserOutlined style={{ fontSize: 20, color: '#999' }} />
-                                      )}
-                                      <div>
-                                        <div style={{ fontSize: 13 }}>{label}</div>
-                                        <div style={{ fontSize: 11, color: '#999' }}>{c.avatar_type === 'photo_avatar' ? 'Photo Avatar' : 'Digital Twin'}</div>
-                                      </div>
-                                    </Flex>
-                                  </Select.Option>
-                                );
-                              })}
+                          {digitalTwins.length > 0 && (
+                            <Select.OptGroup label="Digital Twin">
+                              {digitalTwins.map((c, idx) => renderOption(c, idx, 'twin'))}
                             </Select.OptGroup>
                           )}
                         </>
@@ -751,12 +736,18 @@ export default function DigitalDefense() {
                     onClick={async () => {
                       if (!projectId) return;
                       try {
-                        await defenseApi.triggerCacheSync(projectId);
-                        msg.success('缓存同步已启动，请稍后刷新');
-                      } catch (e: any) {
-                        if (e?.response?.status === 409) {
-                          msg.warning('同步正在进行中，请稍后');
-                        }
+                        setLoadingResources(true);
+                        const [avatars, voices] = await Promise.all([
+                          defenseApi.listHeygenAvatars(projectId),
+                          defenseApi.listHeygenVoices(projectId),
+                        ]);
+                        setHeygenCharacters(avatars);
+                        setHeygenVoices(voices);
+                        msg.success('已刷新');
+                      } catch {
+                        msg.error('刷新失败');
+                      } finally {
+                        setLoadingResources(false);
                       }
                     }}
                     disabled={phase !== 'idle'}
@@ -780,52 +771,42 @@ export default function DigitalDefense() {
                   virtual
                   listHeight={300}
                 >
-                  {(() => {
-                    const myVoices = heygenVoices.filter(v => v.is_custom);
-                    const publicVoices = heygenVoices.filter(v => !v.is_custom);
+                  {heygenVoices.map((v) => {
+                    const isDefault = v.voice_id === defaultVoiceId;
+                    const label = v.name + (isDefault ? '（默认）' : '');
                     return (
-                      <>
-                        {myVoices.length > 0 && (
-                          <Select.OptGroup label="我的">
-                            {myVoices.map((v) => {
-                              const isDefault = v.voice_id === defaultVoiceId;
-                              const label = v.name + (isDefault ? '（默认）' : '');
-                              return (
-                                <Select.Option key={v.voice_id} value={v.voice_id} label={label}>
-                                  <Flex align="center" gap={8}>
-                                    <SoundOutlined />
-                                    <div>
-                                      <div style={{ fontSize: 13 }}>{label}</div>
-                                      <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
-                                    </div>
-                                  </Flex>
-                                </Select.Option>
-                              );
-                            })}
-                          </Select.OptGroup>
-                        )}
-                        {publicVoices.length > 0 && (
-                          <Select.OptGroup label="公共">
-                            {publicVoices.map((v) => {
-                              const isDefault = v.voice_id === defaultVoiceId;
-                              const label = v.name + (isDefault ? '（默认）' : '');
-                              return (
-                                <Select.Option key={v.voice_id} value={v.voice_id} label={label}>
-                                  <Flex align="center" gap={8}>
-                                    <SoundOutlined />
-                                    <div>
-                                      <div style={{ fontSize: 13 }}>{label}</div>
-                                      <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
-                                    </div>
-                                  </Flex>
-                                </Select.Option>
-                              );
-                            })}
-                          </Select.OptGroup>
-                        )}
-                      </>
+                      <Select.Option key={v.voice_id} value={v.voice_id} label={label}>
+                        <Flex align="center" gap={8}>
+                          <SoundOutlined />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13 }}>{label}</div>
+                            <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
+                          </div>
+                          {v.preview_audio && (
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<SoundOutlined />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (voicePreviewRef.current) {
+                                  voicePreviewRef.current.pause();
+                                  voicePreviewRef.current = null;
+                                }
+                                const audio = new Audio(v.preview_audio);
+                                voicePreviewRef.current = audio;
+                                audio.play().catch(() => {});
+                                audio.onended = () => { voicePreviewRef.current = null; };
+                              }}
+                              style={{ fontSize: 11, color: '#1677ff' }}
+                            >
+                              试听
+                            </Button>
+                          )}
+                        </Flex>
+                      </Select.Option>
                     );
-                  })()}
+                  })}
                 </Select>
               </div>
             </Flex>

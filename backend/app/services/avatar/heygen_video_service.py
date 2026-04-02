@@ -22,7 +22,6 @@ HEYGEN_NEW_VIDEO_URL = "https://api.heygen.com/v2/videos"
 HEYGEN_VIDEO_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
 HEYGEN_VOICES_URL = "https://api.heygen.com/v2/voices"
 HEYGEN_TALKING_PHOTOS_URL = "https://api.heygen.com/v1/talking_photo.list"
-HEYGEN_AVATARS_URL = "https://api.heygen.com/v2/avatars"
 HEYGEN_AVATAR_GROUPS_URL = "https://api.heygen.com/v2/avatar_group.list"
 HEYGEN_AVATAR_GROUP_AVATARS_URL = "https://api.heygen.com/v2/avatar_group"
 HEYGEN_ASSET_URL = "https://upload.heygen.com/v1/asset"
@@ -293,7 +292,7 @@ class HeyGenVideoService(VideoAvatarProvider):
         return AvatarVideoResult(video_id=video_id, status="pending", provider="heygen")
 
     async def list_voices(self) -> list[dict]:
-        """列出所有可用的 HeyGen 语音。"""
+        """列出所有可用的 HeyGen 语音（实时获取，按 API 默认顺序，用户自己的声音在前）。"""
         if not settings.heygen_api_key:
             raise HTTPException(status_code=503, detail="HeyGen API Key 未配置")
         try:
@@ -317,7 +316,8 @@ class HeyGenVideoService(VideoAvatarProvider):
                 "language": v.get("language", ""),
                 "gender": v.get("gender", ""),
                 "preview_audio": v.get("preview_audio", ""),
-                "is_custom": v.get("is_custom", False),
+                "support_pause": v.get("support_pause", False),
+                "emotion_support": v.get("emotion_support", False),
             }
             for v in voices
             if isinstance(v, dict)
@@ -372,7 +372,10 @@ class HeyGenVideoService(VideoAvatarProvider):
         return "digital_twin"
 
     async def list_avatars(self) -> list[dict]:
-        """列出所有 HeyGen Avatars，通过 avatar_group API 获取"我的"，通过 /v2/avatars 获取公共。
+        """列出用户自有的 HeyGen Avatars（通过 avatar_group API）。
+
+        只获取用户自己的 avatar（包括 photo avatar 和 digital twins），
+        不再获取公共 avatar，这样速度快且能实时反映 HeyGen 官网的更新。
 
         返回格式：
         {
@@ -381,6 +384,9 @@ class HeyGenVideoService(VideoAvatarProvider):
             "preview_image_url": str,
             "avatar_type": str,  # "photo_avatar" | "digital_twin"
             "is_custom": bool,
+            "group_id": str,
+            "group_name": str,
+            "default_voice_id": str | None,
         }
         """
         if not settings.heygen_api_key:
@@ -390,82 +396,63 @@ class HeyGenVideoService(VideoAvatarProvider):
         result: list[dict] = []
         seen_ids: set[str] = set()
 
-        # ── 1. 获取用户自有 avatar（通过 avatar group API）──
+        # 1. 获取所有 avatar group
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(HEYGEN_AVATAR_GROUPS_URL, headers=headers, timeout=15.0)
                 resp.raise_for_status()
-            groups = resp.json().get("data", {}).get("avatar_group_list", [])
+        except httpx.HTTPStatusError as e:
+            logger.error("获取 avatar groups 失败: %s %s", e.response.status_code, e.response.text[:500])
+            raise HTTPException(status_code=502, detail="获取 Avatar 分组列表失败") from e
+        except httpx.RequestError as e:
+            logger.error("获取 avatar groups 网络错误: %s", e)
+            raise HTTPException(status_code=502, detail="HeyGen 服务不可用") from e
 
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                group_id = group.get("id", "")
-                group_name = group.get("name", "")
-                group_type = group.get("group_type", "")
-                preview_image = group.get("preview_image", "")
+        groups = resp.json().get("data", {}).get("avatar_group_list", [])
 
-                # group_type: "PHOTO" = Photo Avatar, "PRIVATE" = Digital Twin
-                if group_type == "PHOTO":
-                    avatar_type = "photo_avatar"
-                else:
-                    avatar_type = "digital_twin"
+        # 2. 遍历每个 group，获取组内 avatar
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            group_id = group.get("id", "")
+            group_name = group.get("name", "")
+            group_type = group.get("group_type", "")
+            preview_image = group.get("preview_image", "")
+            default_voice_id = group.get("default_voice_id")
 
-                # 获取组内 avatar 列表
-                try:
-                    async with httpx.AsyncClient() as client:
-                        group_resp = await client.get(
-                            f"{HEYGEN_AVATAR_GROUP_AVATARS_URL}/{group_id}/avatars",
-                            headers=headers,
-                            timeout=15.0,
-                        )
-                        group_resp.raise_for_status()
-                    avatar_list = group_resp.json().get("data", {}).get("avatar_list", []) or group_resp.json().get("data", {}).get("avatars", [])
+            # group_type: "PHOTO" = Photo Avatar, 其他 (如 "PRIVATE") = Digital Twin
+            avatar_type = "photo_avatar" if group_type == "PHOTO" else "digital_twin"
 
-                    for a in avatar_list:
-                        if not isinstance(a, dict):
-                            continue
-                        aid = a.get("id", "") or a.get("avatar_id", "")
-                        if not aid or aid in seen_ids:
-                            continue
-                        seen_ids.add(aid)
-                        result.append({
-                            "id": aid,
-                            "name": a.get("name", "") or a.get("avatar_name", "") or group_name,
-                            "preview_image_url": a.get("image_url", "") or a.get("preview_image_url", "") or preview_image,
-                            "avatar_type": avatar_type,
-                            "is_custom": True,
-                        })
-                except Exception:
-                    logger.warning("获取 avatar group %s 内 avatar 失败", group_id, exc_info=True)
-        except Exception:
-            logger.warning("获取用户 avatar groups 失败，仅显示公共 avatar", exc_info=True)
+            try:
+                async with httpx.AsyncClient() as client:
+                    group_resp = await client.get(
+                        f"{HEYGEN_AVATAR_GROUP_AVATARS_URL}/{group_id}/avatars",
+                        headers=headers,
+                        timeout=15.0,
+                    )
+                    group_resp.raise_for_status()
+                resp_data = group_resp.json().get("data", {})
+                avatar_list = resp_data.get("avatar_list", []) or resp_data.get("avatars", [])
 
-        # ── 2. 获取公共 avatar（通过 /v2/avatars）──
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(HEYGEN_AVATARS_URL, headers=headers, timeout=15.0)
-                resp.raise_for_status()
-            body = resp.json()
-            data = body.get("data", {})
-            avatars = data.get("avatars", []) if isinstance(data, dict) else data if isinstance(data, list) else []
-
-            for a in avatars:
-                if not isinstance(a, dict):
-                    continue
-                aid = a.get("avatar_id", "")
-                if not aid or aid in seen_ids:
-                    continue
-                seen_ids.add(aid)
-                result.append({
-                    "id": aid,
-                    "name": a.get("avatar_name", ""),
-                    "preview_image_url": a.get("preview_image_url", ""),
-                    "avatar_type": self._map_avatar_type(a.get("avatar_type", "")),
-                    "is_custom": False,
-                })
-        except Exception:
-            logger.warning("获取公共 avatar 列表失败", exc_info=True)
+                for a in avatar_list:
+                    if not isinstance(a, dict):
+                        continue
+                    aid = a.get("id", "") or a.get("avatar_id", "")
+                    if not aid or aid in seen_ids:
+                        continue
+                    seen_ids.add(aid)
+                    result.append({
+                        "id": aid,
+                        "name": a.get("name", "") or a.get("avatar_name", "") or group_name,
+                        "preview_image_url": a.get("image_url", "") or a.get("preview_image_url", "") or preview_image,
+                        "avatar_type": avatar_type,
+                        "is_custom": True,
+                        "group_id": group_id,
+                        "group_name": group_name,
+                        "default_voice_id": a.get("default_voice_id") or default_voice_id,
+                    })
+            except Exception:
+                logger.warning("获取 avatar group %s (%s) 内 avatar 失败", group_id, group_name, exc_info=True)
 
         return result
 

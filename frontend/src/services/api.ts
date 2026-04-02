@@ -353,7 +353,7 @@ export const tagApi = {
 
 // ── 数字人问辩 ───────────────────────────────────────────────
 
-import type { DefenseQuestion, DefenseRecord, VideoTask, AvatarInfo, VideoGenerationOptions, PhotoAvatarCreateParams, AvatarCacheItem, VoiceCacheItem, PaginatedResponse, CacheQueryParams, SyncStatusResponse } from '@/types';
+import type { DefenseQuestion, DefenseRecord, VideoTask, AvatarInfo, VoiceInfo, VideoGenerationOptions, PhotoAvatarCreateParams } from '@/types';
 
 export const defenseApi = {
   // ── LiveAvatar 实时流式会话 ──
@@ -409,7 +409,7 @@ export const defenseApi = {
 
   // ── 资源列表 ──
   listHeygenVoices: (projectId: string) =>
-    api.get<Array<{ voice_id: string; name: string; language: string; gender: string; preview_audio: string; is_custom: boolean }>>(
+    api.get<VoiceInfo[]>(
       `/projects/${projectId}/defense/avatar/heygen/voices`,
     ).then(r => r.data),
 
@@ -461,37 +461,4 @@ export const defenseApi = {
       `/projects/${projectId}/defense/avatar/heygen/photo-avatar/${generationId}`,
     ).then(r => r.data),
 
-  // ── 缓存 API ──
-  listCachedAvatars: (projectId: string, params?: CacheQueryParams) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
-    if (params?.search) searchParams.set('search', params.search);
-    if (params?.is_custom !== undefined) searchParams.set('is_custom', String(params.is_custom));
-    const qs = searchParams.toString();
-    return api.get<PaginatedResponse<AvatarCacheItem>>(
-      `/projects/${projectId}/defense/avatar/cache/avatars${qs ? `?${qs}` : ''}`,
-    ).then(r => r.data);
-  },
-
-  listCachedVoices: (projectId: string, params?: CacheQueryParams) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
-    if (params?.search) searchParams.set('search', params.search);
-    const qs = searchParams.toString();
-    return api.get<PaginatedResponse<VoiceCacheItem>>(
-      `/projects/${projectId}/defense/avatar/cache/voices${qs ? `?${qs}` : ''}`,
-    ).then(r => r.data);
-  },
-
-  triggerCacheSync: (projectId: string) =>
-    api.post<{ message: string }>(
-      `/projects/${projectId}/defense/avatar/cache/sync`,
-    ).then(r => r.data),
-
-  getCacheSyncStatus: (projectId: string) =>
-    api.get<SyncStatusResponse>(
-      `/projects/${projectId}/defense/avatar/cache/sync-status`,
-    ).then(r => r.data),
 };
