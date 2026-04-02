@@ -782,7 +782,7 @@ export default function DigitalDefense() {
                             <div style={{ fontSize: 13 }}>{label}</div>
                             <div style={{ fontSize: 11, color: '#999' }}>{v.language} · {v.gender}</div>
                           </div>
-                          {v.preview_audio && (
+                          {v.preview_audio && v.preview_audio.startsWith('https://') && (
                             <Button
                               type="text"
                               size="small"
