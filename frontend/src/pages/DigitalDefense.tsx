@@ -34,6 +34,7 @@ import {
   UserOutlined,
   PlusOutlined,
   ReloadOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { LiveAvatarSession, SessionEvent, SessionState, AgentEventsEnum } from '@heygen/liveavatar-web-sdk';
 import BackButton from '@/components/BackButton';
@@ -958,26 +959,58 @@ export default function DigitalDefense() {
                   {/* Video playback buttons */}
                   <Flex gap={8} wrap="wrap" style={{ marginTop: 8 }}>
                     {qTask?.status === 'completed' && qTask.persistent_url && !videoErrors.has(qTask.id) && (
-                      <Button
-                        size="small"
-                        icon={<PlayCircleOutlined />}
-                        onClick={() => handlePlayVideo(record.id, 'question')}
-                      >
-                        {playingRecordVideo?.recordId === record.id && playingRecordVideo.type === 'question' ? '收起视频' : '播放提问视频'}
-                      </Button>
+                      <>
+                        <Button
+                          size="small"
+                          icon={<PlayCircleOutlined />}
+                          onClick={() => handlePlayVideo(record.id, 'question')}
+                        >
+                          {playingRecordVideo?.recordId === record.id && playingRecordVideo.type === 'question' ? '收起视频' : '播放提问视频'}
+                        </Button>
+                        <Button
+                          size="small"
+                          icon={<DownloadOutlined />}
+                          onClick={() => {
+                            const a = document.createElement('a');
+                            a.href = qTask.persistent_url!;
+                            a.download = `提问视频_${formatTime(record.created_at)}.mp4`;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.click();
+                          }}
+                        >
+                          下载提问视频
+                        </Button>
+                      </>
                     )}
                     {qTask && videoErrors.has(qTask.id) && (
                       <Text type="danger" style={{ fontSize: 12 }}>视频链接已失效</Text>
                     )}
 
                     {fTask?.status === 'completed' && fTask.persistent_url && !videoErrors.has(fTask.id) && (
-                      <Button
-                        size="small"
-                        icon={<PlayCircleOutlined />}
-                        onClick={() => handlePlayVideo(record.id, 'feedback')}
-                      >
-                        {playingRecordVideo?.recordId === record.id && playingRecordVideo.type === 'feedback' ? '收起视频' : '播放反馈视频'}
-                      </Button>
+                      <>
+                        <Button
+                          size="small"
+                          icon={<PlayCircleOutlined />}
+                          onClick={() => handlePlayVideo(record.id, 'feedback')}
+                        >
+                          {playingRecordVideo?.recordId === record.id && playingRecordVideo.type === 'feedback' ? '收起视频' : '播放反馈视频'}
+                        </Button>
+                        <Button
+                          size="small"
+                          icon={<DownloadOutlined />}
+                          onClick={() => {
+                            const a = document.createElement('a');
+                            a.href = fTask.persistent_url!;
+                            a.download = `反馈视频_${formatTime(record.created_at)}.mp4`;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.click();
+                          }}
+                        >
+                          下载反馈视频
+                        </Button>
+                      </>
                     )}
                     {fTask && videoErrors.has(fTask.id) && (
                       <Text type="danger" style={{ fontSize: 12 }}>视频链接已失效</Text>
